@@ -1,0 +1,10 @@
+{
+  "name": "gd2cpp",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
