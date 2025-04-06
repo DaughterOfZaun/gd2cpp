@@ -2,8 +2,90 @@ type Pair<K,V> = { Item1: K, Item2: V }
 
 export enum VariantType {
     NIL,
+
+    // atomic types
+    BOOL,
+    INT,
+    FLOAT,
+    STRING,
+
+    // math types
+    VECTOR2,
+    VECTOR2I,
+    RECT2,
+    RECT2I,
+    VECTOR3,
+    VECTOR3I,
+    TRANSFORM2D,
+    VECTOR4,
+    VECTOR4I,
+    PLANE,
+    QUATERNION,
+    AABB,
+    BASIS,
+    TRANSFORM3D,
+    PROJECTION,
+
+    // misc types
+    COLOR,
+    STRING_NAME,
+    NODE_PATH,
+    RID,
+    OBJECT,
+    CALLABLE,
+    SIGNAL,
+    DICTIONARY,
+    ARRAY,
+
+    // typed arrays
+    PACKED_BYTE_ARRAY,
+    PACKED_INT32_ARRAY,
+    PACKED_INT64_ARRAY,
+    PACKED_FLOAT32_ARRAY,
+    PACKED_FLOAT64_ARRAY,
+    PACKED_STRING_ARRAY,
+    PACKED_VECTOR2_ARRAY,
+    PACKED_VECTOR3_ARRAY,
+    PACKED_COLOR_ARRAY,
+    PACKED_VECTOR4_ARRAY,
+
+    MAX,
 }
 export enum VariantOperator {
+    //comparison
+    EQUAL,
+    NOT_EQUAL,
+    LESS,
+    LESS_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+
+    //mathematic
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    NEGATE,
+    POSITIVE,
+    MODULE,
+    POWER,
+
+    //bitwise
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
+    BIT_AND,
+    BIT_OR,
+    BIT_XOR,
+    BIT_NEGATE,
+
+    //logic
+    AND,
+    OR,
+    XOR,
+    NOT,
+
+    //containment
+    IN,
     MAX,
 }
 export class Variant {}
@@ -29,7 +111,7 @@ export enum DataTypeTypeSource {
     ANNOTATED_INFERRED,
 };
 export class DataType {
-    container_element_types: Array<DataType>;
+    container_element_types!: Array<DataType>;
     kind: DataTypeKind = DataTypeKind.UNRESOLVED;
     type_source: DataTypeTypeSource = DataTypeTypeSource.UNDETECTED;
     is_constant: boolean = false;
@@ -38,30 +120,30 @@ export class DataType {
     is_pseudo_type: boolean = false;
     is_coroutine: boolean = false;
     builtin_type: VariantType = VariantType.NIL;
-    native_type: String;
-    enum_type: String;
+    native_type!: string;
+    enum_type!: string;
     //script_type: Ref<Script>;
-    script_path: String;
-    class_type?: ClassNode = undefined;
-    method_info: MethodInfo;
-    enum_values: Map<String, number>;
+    script_path!: string;
+    //class_type?: ClassNode = undefined;
+    method_info!: MethodInfo;
+    enum_values!: Record<string, number>;
 };
 
 export class ClassDocData {
-    brief: String;
-    description: String;
-    tutorials: Array<Pair<String, String>>;
+    brief!: string;
+    description!: string;
+    tutorials!: Array<Pair<string, string>>;
     is_deprecated: boolean = false;
-    deprecated_message: String;
+    deprecated_message!: string;
     is_experimental: boolean = false;
-    experimental_message: String;
+    experimental_message!: string;
 };
 export class MemberDocData {
-    description: String;
+    description!: string;
     is_deprecated: boolean = false;
-    deprecated_message: String;
+    deprecated_message!: string;
     is_experimental: boolean = false;
-    experimental_message: String;
+    experimental_message!: string;
 };
 
 export enum NodeType {
@@ -115,25 +197,25 @@ export class Node {
     leftmost_column: number = 0
     rightmost_column: number = 0;
     next?: Node = undefined;
-    annotations: Array<AnnotationNode>;
-    datatype: DataType;
+    annotations!: Array<AnnotationNode>;
+    datatype!: DataType;
 };
 export class ExpressionNode extends Node {
     reduced: boolean = false;
     is_constant: boolean = false;
-    reduced_value: Variant;
+    reduced_value?: null|Variant = undefined; //?
 };
 export class AnnotationNode extends Node {
-    name: String;
-    arguments: Array<ExpressionNode>;
-    resolved_arguments: Array<Variant>;
+    name!: string;
+    arguments!: Array<ExpressionNode>;
+    resolved_arguments!: Array<Variant>;
     info?: AnnotationInfo = undefined;
-    export_info: PropertyInfo;
+    export_info!: PropertyInfo;
     is_resolved: boolean = false;
     is_applied: boolean = false;
 };
 export class ArrayNode extends ExpressionNode {
-    elements: Array<ExpressionNode>;
+    elements!: Array<ExpressionNode>;
 };
 export class AssertNode extends Node {
     condition?: ExpressionNode = undefined;
@@ -203,8 +285,8 @@ export class BreakNode extends Node {};
 export class BreakpointNode extends Node {};
 export class CallNode extends ExpressionNode {
     callee?: ExpressionNode = undefined;
-    arguments: Array<ExpressionNode>;
-    function_name: String;
+    arguments!: Array<ExpressionNode>;
+    function_name!: string;
     is_super: boolean = false;
     is_static: boolean = false;
 };
@@ -222,13 +304,13 @@ export class EnumNodeValue {
     line: number = 0;
     leftmost_column: number = 0;
     rightmost_column: number = 0;
-    doc_data: MemberDocData;
+    doc_data!: MemberDocData;
 };
 export class EnumNode extends Node {
     identifier?: IdentifierNode = undefined;
-    values: Array<EnumNodeValue>;
-    dictionary: Variant;
-    doc_data: MemberDocData;
+    values!: Array<EnumNodeValue>;
+    dictionary!: Variant;
+    doc_data!: MemberDocData;
 };
 export enum ClassNodeMemberType {
     UNDEFINED,
@@ -268,25 +350,25 @@ type ClassNodeMember = {
 type ClassNodeMember = ClassNode | ConstantNode | FunctionNode | SignalNode | VariableNode | EnumNode | EnumNodeValue;
 export class ClassNode extends Node {
     identifier?: IdentifierNode = undefined;
-    icon_path: String;
-    simplified_icon_path: String;
-    members: Array<ClassNodeMember>;
-    members_indices: Map<String, number>;
+    icon_path!: string;
+    simplified_icon_path!: string;
+    members!: Array<ClassNodeMember>;
+    members_indices!: Record<string, number>;
     //outer?: ClassNode = undefined;
     extends_used: boolean = false;
     onready_used: boolean = false;
     has_static_data: boolean = false;
     annotated_static_unload: boolean = false;
-    extends_path: String;
-    extends: Array<IdentifierNode>;
-    base_type: DataType;
-    fqcn: String;
-    doc_data: ClassDocData;
+    extends_path!: string;
+    extends!: Array<IdentifierNode>;
+    base_type!: DataType;
+    fqcn!: string;
+    doc_data!: ClassDocData;
     resolved_interface: boolean = false;
     resolved_body: boolean = false;
 };
 export class ConstantNode extends AssignableNode {
-    doc_data: MemberDocData;
+    doc_data!: MemberDocData;
 };
 export class ContinueNode extends Node {};
 export class DictionaryNodePair {
@@ -298,7 +380,7 @@ export enum DictionaryNodeStyle {
     PYTHON_DICT,
 };
 export class DictionaryNode extends ExpressionNode {
-    elements: Array<DictionaryNodePair>;
+    elements!: Array<DictionaryNodePair>;
     style: DictionaryNodeStyle = DictionaryNodeStyle.PYTHON_DICT;
 };
 export class ForNode extends Node {
@@ -310,23 +392,23 @@ export class ForNode extends Node {
 };
 export class FunctionNode extends Node {
     identifier?: IdentifierNode = undefined;
-    parameters: Array<ParameterNode>;
-    parameters_indices: Map<String, number>;
+    parameters!: Array<ParameterNode>;
+    parameters_indices!: Record<string, number>;
     return_type?: TypeNode = undefined;
     body?: SuiteNode = undefined;
     is_static: boolean = false;
     is_coroutine: boolean = false;
-    rpc_config: Variant;
-    info: MethodInfo;
+    rpc_config!: Variant;
+    info!: MethodInfo;
     source_lambda?: LambdaNode = undefined;
-    default_arg_values: Array<Variant>;
-    doc_data: MemberDocData;
+    default_arg_values!: Array<Variant>;
+    doc_data!: MemberDocData;
     min_local_doc_line: number = 0;
     resolved_signature: boolean = false;
     resolved_body: boolean = false;
 };
 export class GetNodeNode extends ExpressionNode {
-    full_path: String;
+    full_path!: string;
     use_dollar: boolean = true;
 };
 export enum IdentifierNodeSource {
@@ -345,7 +427,7 @@ export enum IdentifierNodeSource {
     STATIC_VARIABLE,
 };
 export class IdentifierNode extends ExpressionNode {
-    name: String;
+    name!: string;
     //suite?: SuiteNode = undefined;
     source: IdentifierNodeSource = IdentifierNodeSource.UNDEFINED_SOURCE;
     //union {
@@ -369,19 +451,19 @@ export class LambdaNode extends ExpressionNode {
     function?: FunctionNode = undefined;
     parent_function?: FunctionNode = undefined;
     parent_lambda?: LambdaNode = undefined;
-    captures: Array<IdentifierNode>;
-    captures_indices: Map<String, number>;
+    captures!: Array<IdentifierNode>;
+    captures_indices!: Record<string, number>;
     use_self: boolean = false;
 };
 export class LiteralNode extends ExpressionNode {
-    value: Variant;
+    value!: Variant;
 };
 export class MatchNode extends Node {
     test?: ExpressionNode = undefined;
-    branches: Array<MatchBranchNode>;
+    branches!: Array<MatchBranchNode>;
 };
 export class MatchBranchNode extends Node {
-    patterns: Array<PatternNode>;
+    patterns!: Array<PatternNode>;
     block?: SuiteNode = undefined;
     has_wildcard: boolean = false;
     guard_body?: SuiteNode = undefined;
@@ -408,14 +490,14 @@ export class PatternNode extends Node {
     bind?: IdentifierNode;
     expression?: ExpressionNode;
     //};
-    array: Array<PatternNode>;
+    array!: Array<PatternNode>;
     rest_used: boolean = false;
-    dictionary: Array<PatternNodePair>;
-    binds: Map<String, IdentifierNode>;
+    dictionary!: Array<PatternNodePair>;
+    binds!: Record<string, IdentifierNode>;
 };
 export class PreloadNode extends ExpressionNode {
     path?: ExpressionNode = undefined;
-    resolved_path: String;
+    resolved_path!: string;
     //resource: Ref<Resource>;
 };
 export class ReturnNode extends Node {
@@ -423,14 +505,14 @@ export class ReturnNode extends Node {
     void_return: boolean = false;
 };
 export class SelfNode extends ExpressionNode {
-    current_class?: ClassNode = undefined;
+    //current_class?: ClassNode = undefined;
 };
 export class SignalNode extends Node {
     identifier?: IdentifierNode = undefined;
-    parameters: Array<ParameterNode>;
-    parameters_indices: Map<String, number>;
-    method_info: MethodInfo;
-    doc_data: MemberDocData;
+    parameters!: Array<ParameterNode>;
+    parameters_indices!: Record<string, number>;
+    method_info!: MethodInfo;
+    doc_data!: MemberDocData;
     usages: number = 0;
 };
 export class SubscriptNode extends ExpressionNode {
@@ -457,7 +539,7 @@ export class SuiteNodeLocal {
     parameter?: ParameterNode;
     bind?: IdentifierNode;
     //};
-    name: String;
+    name!: string;
     source_function?: FunctionNode = undefined;
     start_line: number = 0
     end_line: number = 0;
@@ -468,10 +550,10 @@ export class SuiteNodeLocal {
 };
 export class SuiteNode extends Node {
     parent_block?: SuiteNode = undefined;
-    statements: Array<Node>;
-    empty: SuiteNodeLocal;
-    locals: Array<SuiteNodeLocal>;
-    locals_indices: Map<String, number>;
+    statements!: Array<Node>;
+    empty!: SuiteNodeLocal;
+    locals!: Array<SuiteNodeLocal>;
+    locals_indices!: Record<string, number>;
     parent_function?: FunctionNode = undefined;
     parent_if?: IfNode = undefined;
     has_return: boolean = false;
@@ -485,13 +567,13 @@ export class TernaryOpNode extends ExpressionNode {
     false_expr?: ExpressionNode = undefined;
 };
 export class TypeNode extends Node {
-    type_chain: Array<IdentifierNode>;
-    container_types: Array<TypeNode>;
+    type_chain!: Array<IdentifierNode>;
+    container_types!: Array<TypeNode>;
 };
 export class TypeTestNode extends ExpressionNode {
     operand?: ExpressionNode = undefined;
     test_type?: TypeNode = undefined;
-    test_datatype: DataType;
+    test_datatype!: DataType;
 };
 export enum UnaryOpNodeOpType {
     POSITIVE,
@@ -522,10 +604,10 @@ export class VariableNode extends AssignableNode {
     //};
     exported: boolean = false;
     onready: boolean = false;
-    export_info: PropertyInfo;
+    export_info!: PropertyInfo;
     assignments: number = 0;
     is_static: boolean = false;
-    doc_data: MemberDocData;
+    doc_data!: MemberDocData;
 };
 export class WhileNode extends Node {
     condition?: ExpressionNode = undefined;
