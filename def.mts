@@ -549,13 +549,13 @@ export class SuiteNodeLocal {
     rightmost_column: number = 0;
 };
 export class SuiteNode extends Node {
-    parent_block?: SuiteNode = undefined;
+    //parent_block?: SuiteNode = undefined;
     statements!: Array<Node>;
     empty!: SuiteNodeLocal;
     locals!: Array<SuiteNodeLocal>;
     locals_indices!: Record<string, number>;
-    parent_function?: FunctionNode = undefined;
-    parent_if?: IfNode = undefined;
+    //parent_function?: FunctionNode = undefined;
+    //parent_if?: IfNode = undefined;
     has_return: boolean = false;
     has_continue: boolean = false;
     has_unreachable_code: boolean = false;
