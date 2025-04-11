@@ -1,16 +1,28 @@
 import ast from "./ast.json"
 
-import { NodeType, Node, ClassNode, VariableNode, TypeNode, ArrayNode, AssignmentNode, AssignmentNodeOperation, AwaitNode, BinaryOpNode, CallNode, CastNode, DictionaryNode, GetNodeNode, IdentifierNode, LambdaNode, LiteralNode, PreloadNode, SelfNode, SubscriptNode, TypeTestNode, UnaryOpNode, BinaryOpNodeOpType, UnaryOpNodeOpType, AnnotationNode, AssertNode, BreakNode, BreakpointNode, ConstantNode, ContinueNode, EnumNode, ForNode, FunctionNode, IfNode, MatchNode, ParameterNode, PassNode, PatternNode, ReturnNode, SignalNode, SuiteNode, WhileNode, MatchBranchNode, TernaryOpNode } from "./def.mjs"
+import { NodeType, Node, ClassNode, VariableNode, TypeNode, ArrayNode, AssignmentNode, AssignmentNodeOperation, AwaitNode, BinaryOpNode, CallNode, CastNode, DictionaryNode, GetNodeNode, IdentifierNode, LambdaNode, LiteralNode, PreloadNode, SelfNode, SubscriptNode, TypeTestNode, UnaryOpNode, BinaryOpNodeOpType, UnaryOpNodeOpType, AnnotationNode, AssertNode, BreakNode, BreakpointNode, ConstantNode, ContinueNode, EnumNode, ForNode, FunctionNode, IfNode, MatchNode, ParameterNode, PassNode, PatternNode, ReturnNode, SignalNode, SuiteNode, WhileNode, MatchBranchNode, TernaryOpNode, AssignableNode, Variant, ExpressionNode } from "./def.mjs"
 
 const TAB = '   '
 function tab(code: string): string {
     return code.split('\n').map(line => TAB + line).join('\n')
 }
 
-function type(n: TypeNode): string {
+function walk_type(n: TypeNode|undefined): string {
     if(!n) return 'auto'
     if(!n.type_chain.length) return 'void'
-    return n.type_chain.map(id => id.name).join('::') + (n.container_types.length ? `<${n.container_types.map(type).join(', ')}>` : ``)
+    return n.type_chain.map(id => id.name).join('::')
+        + (n.container_types.length ? `<${n.container_types.map(walk_type).join(', ')}>` : ``)
+}
+
+function walk_variant(v: Variant): string {
+    return JSON.stringify(v) //TODO:
+}
+
+//TODO:
+function walk_match_branch(n: MatchBranchNode, test: ExpressionNode): string {
+    return `if(false){\n${tab(
+        walk(n.block!)
+    )}\n}`
 }
 
 const assign_op = {
@@ -42,7 +54,7 @@ const bin_op = {
     [BinaryOpNodeOpType.BIT_XOR]: '^',
     [BinaryOpNodeOpType.LOGIC_AND]: '&&',
     [BinaryOpNodeOpType.LOGIC_OR]: '||',
-    [BinaryOpNodeOpType.CONTENT_TEST]: '', //TODO:
+    [BinaryOpNodeOpType.CONTENT_TEST]: 'in', //TODO:
     [BinaryOpNodeOpType.COMP_EQUAL]: '==',
     [BinaryOpNodeOpType.COMP_NOT_EQUAL]: '!=',
     [BinaryOpNodeOpType.COMP_LESS]: '<',
@@ -58,6 +70,11 @@ const un_op = {
     [UnaryOpNodeOpType.LOGIC_NOT]: '!',
 }
 
+function walk_assignable(n: AssignableNode): string {
+    return `${walk_type(n.datatype_specifier!)} ${n.identifier!.name}`
+        + (n.initializer ? ` = ${walk(n.initializer)}` : ``)
+}
+
 function walk(node: Node): string {
     switch(node.type){
         case NodeType.NONE: {
@@ -66,7 +83,7 @@ function walk(node: Node): string {
         }
         case NodeType.ANNOTATION: {
             let n = node as AnnotationNode
-            return `ANNOTATION` //TODO:
+            return `//${n.name}(${n.arguments.map(a => walk(a))})`
         }
         case NodeType.ARRAY: {
             let n = node as ArrayNode
@@ -74,7 +91,9 @@ function walk(node: Node): string {
         }
         case NodeType.ASSERT: {
             let n = node as AssertNode
-            return `ASSERT` //TODO:
+            return `assert(${walk(n.condition!)}`
+                + (n.message ? `, ${walk(n.message!)}` : ``)
+                + `)`
         }
         case NodeType.ASSIGNMENT: {
             let n = node as AssignmentNode
@@ -82,7 +101,7 @@ function walk(node: Node): string {
         }
         case NodeType.AWAIT: {
             let n = node as AwaitNode
-            return `await ${walk(n.to_await!)}`
+            return `co_await ${walk(n.to_await!)}`
         }
         case NodeType.BINARY_OPERATOR: {
             let n = node as BinaryOpNode
@@ -90,11 +109,11 @@ function walk(node: Node): string {
         }
         case NodeType.BREAK: {
             let n = node as BreakNode
-            return `BREAK` //TODO:
+            return `break`
         }
         case NodeType.BREAKPOINT: {
             let n = node as BreakpointNode
-            return `BREAKPOINT` //TODO:
+            return `breakpoint()`
         }
         case NodeType.CALL: {
             let n = node as CallNode
@@ -102,7 +121,7 @@ function walk(node: Node): string {
         }
         case NodeType.CAST: {
             let n = node as CastNode
-            return `(${type(n.cast_type!)})${walk(n.operand!)}`
+            return `(${walk_type(n.cast_type!)})${walk(n.operand!)}`
         }
         case NodeType.CLASS: {
             let n = node as ClassNode
@@ -112,11 +131,11 @@ function walk(node: Node): string {
         }
         case NodeType.CONSTANT: {
             let n = node as ConstantNode
-            return `CONSTANT` //TODO:
+            return `const ${walk_assignable(n)}`
         }
         case NodeType.CONTINUE: {
             let n = node as ContinueNode
-            return `CONTINUE` //TODO:
+            return `continue`
         }
         case NodeType.DICTIONARY: {
             let n = node as DictionaryNode
@@ -126,15 +145,19 @@ function walk(node: Node): string {
         }
         case NodeType.ENUM: {
             let n = node as EnumNode
-            return `ENUM` //TODO:
+            return `enum ${n.identifier!.name} {\n${tab(
+                n.values.map(v => `${v.identifier!.name} = ${v.custom_value ?? v.value}`).join(',\n')
+            )}\n}`
         }
         case NodeType.FOR: {
             let n = node as ForNode
-            return `FOR` //TODO:
+            return `for(${walk_type(n.datatype_specifier!)} ${n.variable!.name} : ${walk(n.list!)}){\n${tab(
+                walk(n.loop!)
+            )}\n}`
         }
         case NodeType.FUNCTION: {
             let n = node as FunctionNode
-            return `${type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')}){\n${tab(walk(n.body!))}\n}` //TODO:
+            return `${walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')}){\n${tab(walk(n.body!))}\n}` //TODO:
         }
         case NodeType.GET_NODE: {
             let n = node as GetNodeNode
@@ -146,31 +169,35 @@ function walk(node: Node): string {
         }
         case NodeType.IF: {
             let n = node as IfNode
-            return `IF` //TODO:
+            return `if(${walk(n.condition!)}){\n${tab(
+                walk(n.true_block!)
+            )}\n}` + (n.false_block ? ` else {\n${tab(
+                walk(n.false_block)
+            )}\n}` : ``)
         }
         case NodeType.LAMBDA: {
             let n = node as LambdaNode
-            return `LAMBDA` //TODO:
+            return `[&]${walk(n.function!)}`
         }
         case NodeType.LITERAL: {
             let n = node as LiteralNode
-            return `LITERAL` //TODO:
+            return `${walk_variant(n.value)}`
         }
         case NodeType.MATCH: {
             let n = node as MatchNode
-            return `MATCH` //TODO:
+            return n.branches.map(b => walk_match_branch(b, n.test!)).join(' else ')
         }
         case NodeType.MATCH_BRANCH: {
             let n = node as MatchBranchNode
-            return `MATCH_BRANCH`
+            return `MATCH_BRANCH` //TODO:
         }
         case NodeType.PARAMETER: {
             let n = node as ParameterNode
-            return `PARAMETER` //TODO:
+            return walk_assignable(n)
         }
         case NodeType.PASS: {
             let n = node as PassNode
-            return `PASS` //TODO:
+            return ``
         }
         case NodeType.PATTERN: {
             let n = node as PatternNode
@@ -182,7 +209,7 @@ function walk(node: Node): string {
         }
         case NodeType.RETURN: {
             let n = node as ReturnNode
-            return `RETURN` //TODO:
+            return `return` + (n.void_return ? ` ${walk(n.return_value!)}` : ``)
         }
         case NodeType.SELF: {
             let n = node as SelfNode
@@ -190,7 +217,7 @@ function walk(node: Node): string {
         }
         case NodeType.SIGNAL: {
             let n = node as SignalNode
-            return `SIGNAL` //TODO:
+            return `//signal ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')})` //TODO:
         }
         case NodeType.SUBSCRIPT: {
             let n = node as SubscriptNode
@@ -206,7 +233,7 @@ function walk(node: Node): string {
         }
         case NodeType.TYPE: {
             let n = node as TypeNode
-            return `TYPE` //TODO:
+            return walk_type(n)
         }
         case NodeType.TYPE_TEST: {
             let n = node as TypeTestNode
@@ -218,13 +245,13 @@ function walk(node: Node): string {
         }
         case NodeType.VARIABLE: {
             let n = node as VariableNode
-            return `${type(n.datatype_specifier!)} ${n.identifier!.name}${
-                n.initializer ? ` = ${walk(n.initializer)}` : ``
-            }`
+            return `${walk_assignable(n)}`
         }
         case NodeType.WHILE: {
             let n = node as WhileNode
-            return `WHILE` //TODO:
+            return `while(${walk(n.condition!)}){\n${tab(
+                walk(n.loop!)
+            )}\n}`
         }
     }
     return ``

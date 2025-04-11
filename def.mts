@@ -449,8 +449,8 @@ export class IfNode extends Node {
 };
 export class LambdaNode extends ExpressionNode {
     function?: FunctionNode = undefined;
-    parent_function?: FunctionNode = undefined;
-    parent_lambda?: LambdaNode = undefined;
+    //parent_function?: FunctionNode = undefined;
+    //parent_lambda?: LambdaNode = undefined;
     captures!: Array<IdentifierNode>;
     captures_indices!: Record<string, number>;
     use_self: boolean = false;
