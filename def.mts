@@ -366,6 +366,8 @@ export class ClassNode extends Node {
     doc_data!: ClassDocData;
     resolved_interface: boolean = false;
     resolved_body: boolean = false;
+
+    path!: string // CUSTOM FILED
 };
 export class ConstantNode extends AssignableNode {
     doc_data!: MemberDocData;

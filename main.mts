@@ -1,4 +1,7 @@
-import ast from "./ast.json"
+import fs from 'fs/promises'
+import path from 'path'
+import untyped_ast from "./ast.json"
+const ast: ClassNode[] = untyped_ast as any
 
 import { NodeType, Node, ClassNode, VariableNode, TypeNode, ArrayNode, AssignmentNode, AssignmentNodeOperation, AwaitNode, BinaryOpNode, CallNode, CastNode, DictionaryNode, GetNodeNode, IdentifierNode, LambdaNode, LiteralNode, PreloadNode, SelfNode, SubscriptNode, TypeTestNode, UnaryOpNode, BinaryOpNodeOpType, UnaryOpNodeOpType, AnnotationNode, AssertNode, BreakNode, BreakpointNode, ConstantNode, ContinueNode, EnumNode, ForNode, FunctionNode, IfNode, MatchNode, ParameterNode, PassNode, PatternNode, ReturnNode, SignalNode, SuiteNode, WhileNode, MatchBranchNode, TernaryOpNode, AssignableNode, Variant, ExpressionNode } from "./def.mjs"
 
@@ -19,10 +22,15 @@ function walk_variant(v: Variant): string {
 }
 
 //TODO:
-function walk_match_branch(n: MatchBranchNode, test: ExpressionNode): string {
-    return `if(false){\n${tab(
+function walk_match_branch(n: MatchBranchNode, test: string): string {
+    let patterns = n.patterns.map(p => walk_pattern(p, test))
+    return `if(${patterns.join('&&')}){\n${tab(
         walk(n.block!)
     )}\n}`
+}
+
+function walk_pattern(n: PatternNode, test: string): string {
+    return `PATTERN`
 }
 
 const assign_op = {
@@ -146,7 +154,7 @@ function walk(node: Node): string {
         case NodeType.ENUM: {
             let n = node as EnumNode
             return `enum ${n.identifier!.name} {\n${tab(
-                n.values.map(v => `${v.identifier!.name} = ${v.custom_value ?? v.value}`).join(',\n')
+                n.values.map(v => `${v.identifier!.name} = ${v.custom_value ? walk(v.custom_value) : v.value}`).join(',\n')
             )}\n}`
         }
         case NodeType.FOR: {
@@ -157,7 +165,7 @@ function walk(node: Node): string {
         }
         case NodeType.FUNCTION: {
             let n = node as FunctionNode
-            return `${walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')}){\n${tab(walk(n.body!))}\n}` //TODO:
+            return `${walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')}){\n${tab(walk(n.body!))}\n}`
         }
         case NodeType.GET_NODE: {
             let n = node as GetNodeNode
@@ -177,7 +185,11 @@ function walk(node: Node): string {
         }
         case NodeType.LAMBDA: {
             let n = node as LambdaNode
-            return `[&]${walk(n.function!)}`
+            return `[&](${n.function!.parameters.map(p => walk(p)).join(', ')})`
+                + (n.function!.return_type ? ` -> ${walk_type(n.function!.return_type)}` : ``)
+                + `{\n${tab(
+                    walk(n.function!.body!)
+                )}\n}`
         }
         case NodeType.LITERAL: {
             let n = node as LiteralNode
@@ -185,7 +197,8 @@ function walk(node: Node): string {
         }
         case NodeType.MATCH: {
             let n = node as MatchNode
-            return n.branches.map(b => walk_match_branch(b, n.test!)).join(' else ')
+            let test = walk(n.test!)
+            return n.branches.map(b => walk_match_branch(b, test)).join(' else ')
         }
         case NodeType.MATCH_BRANCH: {
             let n = node as MatchBranchNode
@@ -257,4 +270,12 @@ function walk(node: Node): string {
     return ``
 }
 
-console.log(walk(ast[0] as ClassNode))
+await Promise.all(
+    ast.map(
+        async n => {
+            let out_path = path.join('out', n.path)
+            await fs.mkdir(path.dirname(out_path), { recursive: true })
+            await fs.writeFile(out_path.replace('.gd', '.cpp'), walk(n))
+        }
+    )
+)
