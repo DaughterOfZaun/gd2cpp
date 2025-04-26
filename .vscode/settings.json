@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "chrono": "cpp",
+        "typeinfo": "cpp",
+        "text_encoding": "cpp",
+        "cstdint": "cpp"
+    }
+}

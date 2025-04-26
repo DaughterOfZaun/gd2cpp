@@ -1,281 +1,160 @@
 import fs from 'fs/promises'
 import path from 'path'
+
 import untyped_ast from "./ast.json"
+import { ClassNode, EnumNode, VariableNode } from "./def.mjs"
 const ast: ClassNode[] = untyped_ast as any
 
-import { NodeType, Node, ClassNode, VariableNode, TypeNode, ArrayNode, AssignmentNode, AssignmentNodeOperation, AwaitNode, BinaryOpNode, CallNode, CastNode, DictionaryNode, GetNodeNode, IdentifierNode, LambdaNode, LiteralNode, PreloadNode, SelfNode, SubscriptNode, TypeTestNode, UnaryOpNode, BinaryOpNodeOpType, UnaryOpNodeOpType, AnnotationNode, AssertNode, BreakNode, BreakpointNode, ConstantNode, ContinueNode, EnumNode, ForNode, FunctionNode, IfNode, MatchNode, ParameterNode, PassNode, PatternNode, ReturnNode, SignalNode, SuiteNode, WhileNode, MatchBranchNode, TernaryOpNode, AssignableNode, Variant, ExpressionNode } from "./def.mjs"
+//import { WalkerCPP } from './walker_cpp.mts'
+import { WalkerHPP } from './walker_hpp.mts'
+import { ClassRepr, get_class_name, get_parent_name, type ClassReprType } from './shared.mts'
+import { Walker } from './walker.mts'
 
-const TAB = '   '
-function tab(code: string): string {
-    return code.split('\n').map(line => TAB + line).join('\n')
-}
+let types = new Map<string, ClassRepr>()
 
-function walk_type(n: TypeNode|undefined): string {
-    if(!n) return 'auto'
-    if(!n.type_chain.length) return 'void'
-    return n.type_chain.map(id => id.name).join('::')
-        + (n.container_types.length ? `<${n.container_types.map(walk_type).join(', ')}>` : ``)
-}
+//if(await fs.exists('class_map.json')){
+//    class_map = new Map(JSON.parse(await fs.readFile('class_map.json', 'utf8')))
+//} else
+await Promise.all(
+    [
+        'godot-cpp/gdextension',
+        'godot-cpp/include',
+        'godot-cpp/gen/include'
+    ]
+    .map(async include_path => {
+        await Promise.all(
+            (await fs.readdir(include_path, { recursive: true }))
+            .filter(path => path.endsWith('.hpp'))
+            .map(async path => {
+                let content = await fs.readFile(`${include_path}/${path}`, 'utf8')
+                let matches = content.matchAll(/(class|struct|enum)(?: \[\[nodiscard\]\])?(?: (\w+))(?: : public (\w+))?(?: \{)/g)
+                for(let [_, type, name, parent_name] of matches){
+                    types.set(name!, new ClassRepr(path, type as ClassReprType, name, parent_name, true))
+                }
+            })
+        )
+    })
+)
+//await fs.writeFile('class_map.json', JSON.stringify(class_map.entries().toArray()))
 
-function walk_variant(v: Variant): string {
-    return JSON.stringify(v) //TODO:
-}
+for(let n of ast){
+    let path = n.path.replace(/^\//, '').replace('.gd', '.hpp')
+    let chain = []
+    let registrator = new (class Registrator extends Walker {
+        walk_class(n: ClassNode): string {
+            let name = get_class_name(n)
+            let parent_name = get_parent_name(n)
 
-//TODO:
-function walk_match_branch(n: MatchBranchNode, test: string): string {
-    let patterns = n.patterns.map(p => walk_pattern(p, test))
-    return `if(${patterns.join('&&')}){\n${tab(
-        walk(n.block!)
-    )}\n}`
-}
-
-function walk_pattern(n: PatternNode, test: string): string {
-    return `PATTERN`
-}
-
-const assign_op = {
-    [AssignmentNodeOperation.NONE]: '',
-    [AssignmentNodeOperation.ADDITION]: '+',
-    [AssignmentNodeOperation.SUBTRACTION]: '-',
-    [AssignmentNodeOperation.MULTIPLICATION]: '*',
-    [AssignmentNodeOperation.DIVISION]: '/',
-    [AssignmentNodeOperation.MODULO]: '%',
-    [AssignmentNodeOperation.POWER]: '', //TODO:
-    [AssignmentNodeOperation.BIT_SHIFT_LEFT]: '<<',
-    [AssignmentNodeOperation.BIT_SHIFT_RIGHT]: '>>',
-    [AssignmentNodeOperation.BIT_AND]: '&',
-    [AssignmentNodeOperation.BIT_OR]: '|',
-    [AssignmentNodeOperation.BIT_XOR]: '^',
-}
-
-const bin_op = {
-    [BinaryOpNodeOpType.ADDITION]: '+',
-    [BinaryOpNodeOpType.SUBTRACTION]: '-',
-    [BinaryOpNodeOpType.MULTIPLICATION]: '*',
-    [BinaryOpNodeOpType.DIVISION]: '/',
-    [BinaryOpNodeOpType.MODULO]: '%',
-    [BinaryOpNodeOpType.POWER]: '', //TODO:
-    [BinaryOpNodeOpType.BIT_LEFT_SHIFT]: '<<',
-    [BinaryOpNodeOpType.BIT_RIGHT_SHIFT]: '>>',
-    [BinaryOpNodeOpType.BIT_AND]: '&',
-    [BinaryOpNodeOpType.BIT_OR]: '|',
-    [BinaryOpNodeOpType.BIT_XOR]: '^',
-    [BinaryOpNodeOpType.LOGIC_AND]: '&&',
-    [BinaryOpNodeOpType.LOGIC_OR]: '||',
-    [BinaryOpNodeOpType.CONTENT_TEST]: 'in', //TODO:
-    [BinaryOpNodeOpType.COMP_EQUAL]: '==',
-    [BinaryOpNodeOpType.COMP_NOT_EQUAL]: '!=',
-    [BinaryOpNodeOpType.COMP_LESS]: '<',
-    [BinaryOpNodeOpType.COMP_LESS_EQUAL]: '<=',
-    [BinaryOpNodeOpType.COMP_GREATER]: '>',
-    [BinaryOpNodeOpType.COMP_GREATER_EQUAL]: '>=',
-}
-
-const un_op = {
-    [UnaryOpNodeOpType.POSITIVE]: '+',
-    [UnaryOpNodeOpType.NEGATIVE]: '-',
-    [UnaryOpNodeOpType.COMPLEMENT]: '~',
-    [UnaryOpNodeOpType.LOGIC_NOT]: '!',
-}
-
-function walk_assignable(n: AssignableNode): string {
-    return `${walk_type(n.datatype_specifier!)} ${n.identifier!.name}`
-        + (n.initializer ? ` = ${walk(n.initializer)}` : ``)
-}
-
-function walk(node: Node): string {
-    switch(node.type){
-        case NodeType.NONE: {
-            //let n = node as NoneNode
-            return `NONE` //TODO:
-        }
-        case NodeType.ANNOTATION: {
-            let n = node as AnnotationNode
-            return `//${n.name}(${n.arguments.map(a => walk(a))})`
-        }
-        case NodeType.ARRAY: {
-            let n = node as ArrayNode
-            return `{${n.elements.map(e => walk(e)).join(', ')}}`
-        }
-        case NodeType.ASSERT: {
-            let n = node as AssertNode
-            return `assert(${walk(n.condition!)}`
-                + (n.message ? `, ${walk(n.message!)}` : ``)
-                + `)`
-        }
-        case NodeType.ASSIGNMENT: {
-            let n = node as AssignmentNode
-            return `${walk(n.assignee!)} ${assign_op[n.operation]}= ${walk(n.assigned_value!)}` //TODO: variant_op?
-        }
-        case NodeType.AWAIT: {
-            let n = node as AwaitNode
-            return `co_await ${walk(n.to_await!)}`
-        }
-        case NodeType.BINARY_OPERATOR: {
-            let n = node as BinaryOpNode
-            return `${walk(n.left_operand!)} ${bin_op[n.operation]} ${walk(n.right_operand!)}` //TODO: variant_op?
-        }
-        case NodeType.BREAK: {
-            let n = node as BreakNode
-            return `break`
-        }
-        case NodeType.BREAKPOINT: {
-            let n = node as BreakpointNode
-            return `breakpoint()`
-        }
-        case NodeType.CALL: {
-            let n = node as CallNode
-            return `${walk(n.callee!)}(${n.arguments.map(arg => walk(arg)).join(', ')})` //TODO: function_name? is_super? is_static?
-        }
-        case NodeType.CAST: {
-            let n = node as CastNode
-            return `(${walk_type(n.cast_type!)})${walk(n.operand!)}`
-        }
-        case NodeType.CLASS: {
-            let n = node as ClassNode
-            return `class ${n.fqcn} {\n${tab(
-                n.members.filter(m => 'type' in m).map(m => `${walk(m)};`).join('\n')
-            )}\n}`
-        }
-        case NodeType.CONSTANT: {
-            let n = node as ConstantNode
-            return `const ${walk_assignable(n)}`
-        }
-        case NodeType.CONTINUE: {
-            let n = node as ContinueNode
-            return `continue`
-        }
-        case NodeType.DICTIONARY: {
-            let n = node as DictionaryNode
-            return `{${
-                n.elements.map(e => `{${walk(e.key!)}, ${walk(e.value!)}}`).join(', ')
-            }}`
-        }
-        case NodeType.ENUM: {
-            let n = node as EnumNode
-            return `enum ${n.identifier!.name} {\n${tab(
-                n.values.map(v => `${v.identifier!.name} = ${v.custom_value ? walk(v.custom_value) : v.value}`).join(',\n')
-            )}\n}`
-        }
-        case NodeType.FOR: {
-            let n = node as ForNode
-            return `for(${walk_type(n.datatype_specifier!)} ${n.variable!.name} : ${walk(n.list!)}){\n${tab(
-                walk(n.loop!)
-            )}\n}`
-        }
-        case NodeType.FUNCTION: {
-            let n = node as FunctionNode
-            return `${walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')}){\n${tab(walk(n.body!))}\n}`
-        }
-        case NodeType.GET_NODE: {
-            let n = node as GetNodeNode
-            return `get_node("${n.full_path}")` //TODO: use_dollar?
-        }
-        case NodeType.IDENTIFIER: {
-            let n = node as IdentifierNode
-            return n.name
-        }
-        case NodeType.IF: {
-            let n = node as IfNode
-            return `if(${walk(n.condition!)}){\n${tab(
-                walk(n.true_block!)
-            )}\n}` + (n.false_block ? ` else {\n${tab(
-                walk(n.false_block)
-            )}\n}` : ``)
-        }
-        case NodeType.LAMBDA: {
-            let n = node as LambdaNode
-            return `[&](${n.function!.parameters.map(p => walk(p)).join(', ')})`
-                + (n.function!.return_type ? ` -> ${walk_type(n.function!.return_type)}` : ``)
-                + `{\n${tab(
-                    walk(n.function!.body!)
-                )}\n}`
-        }
-        case NodeType.LITERAL: {
-            let n = node as LiteralNode
-            return `${walk_variant(n.value)}`
-        }
-        case NodeType.MATCH: {
-            let n = node as MatchNode
-            let test = walk(n.test!)
-            return n.branches.map(b => walk_match_branch(b, test)).join(' else ')
-        }
-        case NodeType.MATCH_BRANCH: {
-            let n = node as MatchBranchNode
-            return `MATCH_BRANCH` //TODO:
-        }
-        case NodeType.PARAMETER: {
-            let n = node as ParameterNode
-            return walk_assignable(n)
-        }
-        case NodeType.PASS: {
-            let n = node as PassNode
+            chain.push(name)
+            let chain_str = chain.join('::')
+            types.set(chain_str, new ClassRepr(path, 'class', chain_str, parent_name))
+            for(let member of n.members)
+                if('type' in member)
+                    this.walk(member)
+            chain.pop()
             return ``
         }
-        case NodeType.PATTERN: {
-            let n = node as PatternNode
-            return `PATTERN` //TODO:
+        walk_enum(n: EnumNode): string {
+            let name = n.identifier!.name
+            chain.push(name)
+            let chain_str = chain.join('::')
+            types.set(chain_str, new ClassRepr(path, 'enum', chain_str))
+            chain.pop()
+            return ``
         }
-        case NodeType.PRELOAD: {
-            let n = node as PreloadNode
-            return `preload(${walk(n.path!)})` //TODO: resolved_path?
-        }
-        case NodeType.RETURN: {
-            let n = node as ReturnNode
-            return `return` + (n.void_return ? ` ${walk(n.return_value!)}` : ``)
-        }
-        case NodeType.SELF: {
-            let n = node as SelfNode
-            return `self`
-        }
-        case NodeType.SIGNAL: {
-            let n = node as SignalNode
-            return `//signal ${n.identifier!.name}(${n.parameters.map(p => walk(p)).join(', ')})` //TODO:
-        }
-        case NodeType.SUBSCRIPT: {
-            let n = node as SubscriptNode
-            return `${walk(n.base!)}${n.is_attribute ? `.${n.attribute!.name}` : `[${walk(n.index!)}]` }`
-        }
-        case NodeType.SUITE: {
-            let n = node as SuiteNode
-            return n.statements.map(s => `${walk(s!)};`).join('\n') //TODO:
-        }
-        case NodeType.TERNARY_OPERATOR: {
-            let n = node as TernaryOpNode
-            return `(${walk(n.condition!)}) ? (${walk(n.true_expr!)}) : (${walk(n.false_expr!)})`
-        }
-        case NodeType.TYPE: {
-            let n = node as TypeNode
-            return walk_type(n)
-        }
-        case NodeType.TYPE_TEST: {
-            let n = node as TypeTestNode
-            return `TYPE_TEST` //TODO:
-        }
-        case NodeType.UNARY_OPERATOR: {
-            let n = node as UnaryOpNode
-            return `${un_op[n.operation]}${walk(n.operand!)}` //TODO: variant_op?
-        }
-        case NodeType.VARIABLE: {
-            let n = node as VariableNode
-            return `${walk_assignable(n)}`
-        }
-        case NodeType.WHILE: {
-            let n = node as WhileNode
-            return `while(${walk(n.condition!)}){\n${tab(
-                walk(n.loop!)
-            )}\n}`
-        }
-    }
-    return ``
+        walk_variable = () => ``
+        walk_function = () => ``
+        walk_annotation = () => ``
+        walk_constant = () => ``
+        walk_signal = () => ``
+    })()
+    registrator.walk(n)
 }
 
-await Promise.all(
+await Promise.all([
+    /*
+    await fs.writeFile(
+        'src/everything.hpp',
+        '#pragma once\n'
+        + '#ifndef EVERYTHING\n'
+        + '#define EVERYTHING\n'
+        + [].map(path => `#include <${path}> // IWYU pragma: export\n`).join('')
+        + `using namespace godot;\n`
+        //+ ast.map(n => `#include "${n.path.replace('.gd', '.hpp').replace(/^\//, '')}"\n`).join('')
+        + '#endif // EVERYTHING\n'
+        , 'utf8'
+    ),
+    */
     ast.map(
         async n => {
-            let out_path = path.join('out', n.path)
-            await fs.mkdir(path.dirname(out_path), { recursive: true })
-            await fs.writeFile(out_path.replace('.gd', '.cpp'), walk(n))
+            //const walker_cpp = new WalkerCPP()
+            const walker_hpp = new WalkerHPP()
+            walker_hpp.types = types
+
+            const body = walker_hpp.walk(n)
+
+            let name = 'EXAMPLE_' + n.fqcn.replaceAll('::', '_').replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()
+            let out_path = path.join('src', n.path.replace('.gd', '.hpp'))
+            let out_path_dir = path.dirname(out_path)
+            await fs.mkdir(out_path_dir, { recursive: true })
+            await fs.writeFile(
+                out_path,
+                '#pragma once\n'
+                + `#ifndef ${name}\n`
+                + `#define ${name}\n`
+                //+ `#include "${n.path.replace(/^\/|\/[^/]*$/g, '').replace(/[^/]+/g, '..') + '/' + 'everything.hpp'}"\n`
+                + walker_hpp.refs.values().map(name =>
+                    (types.get(name)?.builtin === true) ?
+                    `namespace godot { class ${name}; }\n` :
+                    `class ${name};\n`
+                ).toArray().join('')
+                
+                + walker_hpp.uses.values()
+                    .filter(name => types.get(name)?.builtin === true)
+                    .map(name => {
+                        let cls = types.get(name)!
+                        return `#include <${cls.path}>\n`
+                    })
+                    .toArray().toSorted().join('')
+                
+                + walker_hpp.uses.values()
+                    .filter(name => types.get(name)?.builtin === false)
+                    .map(name => {
+                        let cls = types.get(name)!
+                        let inc_path = path.join('src', cls.path)
+                        if(inc_path == out_path) return `` // Don't include self
+                        return `#include "${path.relative(out_path_dir, inc_path)}"\n`
+                    })
+                    .toArray().toSorted().join('')
+                
+                //+ ((walker_hpp.uses.values().some(v => builtin_class_map.has(v))) ? `using namespace godot;\n` : ``)
+                + `${body};\n`
+                + `#endif // ${name}\n`
+            )
+        }
+    ),
+   /*
+    ast.map(
+        async n => {
+            //const walker_cpp = new WalkerCPP()
+            const walker_hpp = new WalkerHPP()
+            walker_hpp.builtin_types = new Set(builtin_class_map.keys())
+
+            const body = walker_hpp.walk(n)
+
+            let path_wo_ext = n.path.replace('.gd', '')
+            let name = path.basename(path_wo_ext)
+            let out_path_cpp = path.join('src', path_wo_ext + '.cpp')
+            let out_path_dir = path.dirname(out_path_cpp)
+            await fs.mkdir(out_path_dir, { recursive: true })
+            await fs.writeFile(
+                out_path_cpp,
+                `#include "${name + '.hpp'}"\n` +
+                `#if INTERFACE\n` +
+                `${body};\n` +
+                `#endif // INTERFACE\n`
+            )
         }
     )
-)
+    */
+].flat())

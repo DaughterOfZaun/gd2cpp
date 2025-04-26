@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "type": "shell",
+            "command": "scons",
+            "args": [
+                "dev_build=yes", // enable debugging with breakpoints
+                "compiledb=yes",
+                "use_llvm=yes",
+                "linker=mold",
+                "lto=none",
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}
