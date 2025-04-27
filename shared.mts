@@ -1,20 +1,95 @@
 import path from "path"
 import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, UnaryOpNodeOpType } from "./def.mts"
 
-export type ClassReprType = 'class' | 'struct' | 'enum'
-export class ClassRepr {
-    type: ClassReprType
+export type NamespaceType = 'namespace' | 'class' | 'struct' | 'enum'
+export class Namespace {
+    name: string
+    type: NamespaceType = 'namespace'
+    members = new Map<string, Namespace>()
+    constructor(name: string){
+        this.name = name
+    }
+    get(name: string): undefined | Namespace {
+        return this.members.get(name)
+    }
+    follow(path: string[]) {
+        let chain: Namespace[] = [ this ]
+        let current: undefined | Namespace = this
+        for(let name of path){
+            current = current.get(name)
+            if(!current) break
+            chain.push(current)
+        }
+        if(current && current instanceof ClassRepr)
+            return chain as [...Namespace[], ClassRepr]
+        //throw new Error(`Unresolved type path ${path.join('::')}`)
+        return undefined
+    }
+    walk(cb: (chain: NamespaceChain, ns: Namespace) => void, chain = new NamespaceChain([ this ])){
+        for(let m of this.members.values()){
+            chain.push(m)
+            cb(chain, m)
+            m.walk(cb, chain)
+            chain.pop()
+        }
+    }
+}
+
+export class ClassRepr extends Namespace {
     path: string
-    name?: string
     parent_name?: string
     parent?: ClassRepr
-    builtin: boolean
-    constructor(path: string, type: ClassReprType, name?: string, parent_name?: string, builtin = false){
+    constructor(path: string, type: NamespaceType, name: string, parent_name?: string){
+        super(name)
         this.path = path
         this.type = type
-        this.name = name
         this.parent_name = parent_name
-        this.builtin = builtin
+    }
+}
+
+export class NamespaceChain {
+    chain: Namespace[]
+    constructor(chain: Namespace[]){
+        this.chain = chain
+    }
+    resolve(path: string[]) {
+        for(let i = this.chain.length - 1; i >= 0; i--){
+            let ns = this.chain[i]!
+            
+            if(ns.members.has(path[0]!)){
+                
+                let trail = ns.follow(path)
+                if(!trail) return undefined
+
+                return new NamespaceChain([
+                    ...this.chain.slice(0, i),
+                    ...trail
+                ])
+            }
+        }
+        //throw new Error(`Unresolved type path ${path.join('::')}`)
+        return undefined
+    }
+    push_new(path: string, ns_type: NamespaceType, name: string, extnds?: string){
+        let ns = this.chain.at(-1)!
+
+        let new_ns = ns.get(name)
+        //TODO: console.assert(!new_ns || ns_type === 'namespace')
+        if(!new_ns){
+            new_ns = ns_type === 'namespace' ? new Namespace(name) : new ClassRepr(path, ns_type, name, extnds)
+            ns.members.set(name, new_ns)
+        }
+
+        this.chain.push(new_ns)
+    }
+    push(new_ns: Namespace){
+        this.chain.push(new_ns)
+    }
+    pop(){
+        this.chain.pop()
+    }
+    last(){
+        return this.chain.at(-1)!
     }
 }
 

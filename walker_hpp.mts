@@ -19,15 +19,22 @@ import {
     VariableNode,
     WhileNode
 } from "./def.mts"
-import { bin_op, ClassRepr, get_class_name, get_parent_name, un_op } from "./shared.mts";
+import { bin_op, ClassRepr, get_class_name, get_parent_name, Namespace, NamespaceChain, un_op } from "./shared.mts";
 import { block, Walker } from "./walker.mts";
 
 export class WalkerHPP extends Walker {
 
-    uses = new Set<string>()
-    refs = new Set<string>()
-    types = new Map<string, ClassRepr>()
+    uses = new Set<ClassRepr>()
+    refs = new Set<ClassRepr>()
     
+    ns: Namespace
+    chain: NamespaceChain
+    constructor(ns: Namespace){
+        super()
+        this.ns = ns
+        this.chain = new NamespaceChain([ ns ])
+    }
+
     walk_assignable = (n: AssignableNode) => {
         let type = n.datatype_specifier
         let name = n.identifier!.name
@@ -37,7 +44,7 @@ export class WalkerHPP extends Walker {
                 if(init.value % 1 == 0) return `int ${name}`
                 else return `float ${name}`
             } else if(typeof init.value == 'string'){
-                return `String ${name}`
+                return `godot::String ${name}`
             } else if(typeof init.value == 'boolean'){
                 return `bool ${name}`
             }
@@ -56,17 +63,23 @@ export class WalkerHPP extends Walker {
     walk_cast = (n: CastNode) => ``
     walk_class = (n: ClassNode) => {
         let name = get_class_name(n)
-        let parent_name = get_parent_name(n)
-        if(this.types.get(parent_name)?.builtin === true)
-            parent_name = `godot::${parent_name}`
-        
-        this.uses.add(parent_name.replace('godot::', ''))
+        let extnds = get_parent_name(n)
 
-        return `class ${name} `
-        + (parent_name ? `: public ${parent_name} ` : ``)
-        + block(
-            `GDCLASS(${name}, ${parent_name})\n` +
-            n.members.filter(m => 'type' in m).map(m => `public: ${this.walk(m)};`).join('\n')
+        let new_ns = this.chain.last().get(name)
+        console.assert(!!new_ns)
+        this.chain.push(new_ns!)
+        let body = n.members.filter(m => 'type' in m).map(m => `public: ${this.walk(m)};`).join('\n')
+        this.chain.pop()
+
+        /*
+        if(this.types.get(extnds)?.builtin === true)
+            extnds = `godot::${extnds}`
+        this.uses.add(extnds.replace('godot::', ''))
+        */
+
+        return `class ${name} : public ${extnds} ` + block(
+            `GDCLASS(${name}, ${extnds})\n` +
+            body
         )
     }
     walk_constant = (n: ConstantNode) => `const ${this.walk_assignable(n)}`
@@ -99,9 +112,10 @@ export class WalkerHPP extends Walker {
         if (!n) return 'auto'
         if (!n.type_chain.length) return 'void'
 
-        let chain = n.type_chain.map(id => id.name).join('::')
+        let path = n.type_chain.map(id => id.name)
+        let path_str = path.join('::')
 
-        if(['int', 'float', 'bool'].includes(chain)) return chain
+        if(['int', 'float', 'bool'].includes(path_str)) return path_str
         
         const opaque_types = [
             'Array', 'Callable', 'Dictionary', 'NodePath',
@@ -111,21 +125,38 @@ export class WalkerHPP extends Walker {
             'StringName', 'String', 'Variant',
         ]
 
-        let type = this.types.get(chain)
-        if(type?.builtin === true) chain = `godot::${chain}`
-        if(type?.type === 'class' && !opaque_types.includes(type.name!)){
-            for(let next: undefined|ClassRepr = type; next; next = this.types.get(next.parent_name!)){
-                if(next.name === 'RefCounted'){
-                    this.uses.add('Ref')
-                    this.uses.add(chain.replace('godot::', ''))
-                    return `godot::Ref<${chain}>`
+        let resolve = (path: string[]) => {
+            let chain = this.chain.resolve(path) || this.chain.resolve(['godot', ...path])
+            if(!chain) throw new Error(`Unresolved type path ${path.join('::')}`)
+            return chain
+        }
+
+        let chain = resolve(path)
+        //path = chain.map(ns => ns.name).filter(name => !!name)
+        //path_str = path.join('::')
+
+        let type = chain.last() as ClassRepr
+        if(type.type === 'class' && !opaque_types.includes(type.name)){
+            
+            let ref_counted = this.ns.get(`godot`)!.get(`RefCounted`)! as ClassRepr
+            let ref = this.ns.get(`godot`)!.get(`Ref`)! as ClassRepr
+
+            /*
+            for(let next: undefined | ClassRepr = type; next; next = type.follow(next.parent_name!.split('::')).at(-1) as ClassRepr){
+                if(next === ref_counted){
+                    this.uses.add(ref)
+                    this.uses.add(type)
+                    return `godot::Ref<${path}>`
                 }
             }
-            this.refs.add(chain.replace('godot::', ''))
-            return `${chain}*`
+            this.refs.add(chain)
+            */
+            return `${path}*`
         }
-        this.uses.add(chain.replace('godot::', ''))
-        return chain
+        /*
+        this.uses.add(path.replace('godot::', ''))
+        */
+        return path_str
             //+ (n.container_types.length ? `<${n.container_types.map(this.walk_type).join(', ')}>` : ``)
     }
     walk_type_test = (n: TypeTestNode) => ``

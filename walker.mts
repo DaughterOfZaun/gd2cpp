@@ -19,7 +19,7 @@ import {
     WhileNode
 } from "./def.mts"
 
-const TAB = '   '
+const TAB = '    '
 export function block(code: string): string {
     if(code.trim() == '') return `{}`
     return `{\n` + code.split('\n').map(line => TAB + line).join('\n') + `\n}`

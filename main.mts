@@ -7,10 +7,11 @@ const ast: ClassNode[] = untyped_ast as any
 
 //import { WalkerCPP } from './walker_cpp.mts'
 import { WalkerHPP } from './walker_hpp.mts'
-import { ClassRepr, get_class_name, get_parent_name, type ClassReprType } from './shared.mts'
-import { Walker } from './walker.mts'
+import { ClassRepr, get_class_name, get_parent_name, Namespace, NamespaceChain, type NamespaceType } from './shared.mts'
+import { block, Walker } from './walker.mts'
 
-let types = new Map<string, ClassRepr>()
+let types = new Namespace(``)
+let types_save = () => fs.writeFile('types.json', JSON.stringify(types, (k, v) => (v instanceof Map) ? Object.fromEntries(v.entries()) : v, 4))
 
 //if(await fs.exists('class_map.json')){
 //    class_map = new Map(JSON.parse(await fs.readFile('class_map.json', 'utf8')))
@@ -26,39 +27,46 @@ await Promise.all(
             (await fs.readdir(include_path, { recursive: true }))
             .filter(path => path.endsWith('.hpp'))
             .map(async path => {
+                let level = 0
+                let chain = new NamespaceChain([ types ])
+                let levels = []
                 let content = await fs.readFile(`${include_path}/${path}`, 'utf8')
-                let matches = content.matchAll(/(class|struct|enum)(?: \[\[nodiscard\]\])?(?: (\w+))(?: : public (\w+))?(?: \{)/g)
-                for(let [_, type, name, parent_name] of matches){
-                    types.set(name!, new ClassRepr(path, type as ClassReprType, name, parent_name, true))
+                let matches = content.matchAll(/(namespace|class|struct|enum)(?: \[\[nodiscard\]\])?(?: (\w+))(?: : public (\w+))?(?: \{)|(\{)|(\})/g)
+                for(let [_, type, name, extnds, opening, closing] of matches){
+                    let ns_type = type as NamespaceType
+                    if(name){
+                        chain.push_new(path, ns_type, name, extnds)
+                        levels.push(level++)
+                    } else if(opening) level++
+                    else if(closing && --level === levels.at(-1)){
+                        levels.pop()
+                        chain.pop()
+                    }
                 }
             })
         )
     })
 )
-//await fs.writeFile('class_map.json', JSON.stringify(class_map.entries().toArray()))
 
 for(let n of ast){
     let path = n.path.replace(/^\//, '').replace('.gd', '.hpp')
-    let chain = []
+    let chain = new NamespaceChain([ types ])
     let registrator = new (class Registrator extends Walker {
         walk_class(n: ClassNode): string {
             let name = get_class_name(n)
-            let parent_name = get_parent_name(n)
+            let extnds = get_parent_name(n)
 
-            chain.push(name)
-            let chain_str = chain.join('::')
-            types.set(chain_str, new ClassRepr(path, 'class', chain_str, parent_name))
+            chain.push_new(path, 'class', name, extnds)
             for(let member of n.members)
                 if('type' in member)
                     this.walk(member)
             chain.pop()
+            
             return ``
         }
         walk_enum(n: EnumNode): string {
             let name = n.identifier!.name
-            chain.push(name)
-            let chain_str = chain.join('::')
-            types.set(chain_str, new ClassRepr(path, 'enum', chain_str))
+            chain.push_new(path, 'enum', name)
             chain.pop()
             return ``
         }
@@ -71,7 +79,21 @@ for(let n of ast){
     registrator.walk(n)
 }
 
-await Promise.all([
+types.walk((chain, ns) => {
+    if(ns instanceof ClassRepr && ns.parent_name){
+        let path = ns.parent_name.split('::')
+        let parent = (chain.resolve(path) ?? chain.resolve(['godot', ...path]))?.last() as ClassRepr
+        if(!parent) throw new Error(`Unresolved type path ${path.join('::')}`)
+        ns.parent = parent
+    }
+})
+
+async function Promise_waterfall<T>(promises: Promise<T>[]){
+    for(let promise of promises)
+        await promise
+}
+
+await Promise_waterfall([
     /*
     await fs.writeFile(
         'src/everything.hpp',
@@ -88,8 +110,7 @@ await Promise.all([
     ast.map(
         async n => {
             //const walker_cpp = new WalkerCPP()
-            const walker_hpp = new WalkerHPP()
-            walker_hpp.types = types
+            const walker_hpp = new WalkerHPP(types)
 
             const body = walker_hpp.walk(n)
 
@@ -103,20 +124,22 @@ await Promise.all([
                 + `#ifndef ${name}\n`
                 + `#define ${name}\n`
                 //+ `#include "${n.path.replace(/^\/|\/[^/]*$/g, '').replace(/[^/]+/g, '..') + '/' + 'everything.hpp'}"\n`
-                + walker_hpp.refs.values().map(name =>
-                    (types.get(name)?.builtin === true) ?
-                    `namespace godot { class ${name}; }\n` :
-                    `class ${name};\n`
-                ).toArray().join('')
-                
+                /*
                 + walker_hpp.uses.values()
                     .filter(name => types.get(name)?.builtin === true)
                     .map(name => {
                         let cls = types.get(name)!
                         return `#include <${cls.path}>\n`
                     })
-                    .toArray().toSorted().join('')
+                    .reduce((s, v) => s.add(v), new Set<string>()).values().toArray().toSorted().join('')
                 
+                + `namespace godot ` + block(
+                    walker_hpp.refs.values()
+                        .filter(name => types.get(name)?.builtin === true)
+                        .map(name => `class ${name};`)
+                        .toArray().join('\n')
+                ) + `\n`
+
                 + walker_hpp.uses.values()
                     .filter(name => types.get(name)?.builtin === false)
                     .map(name => {
@@ -124,9 +147,13 @@ await Promise.all([
                         let inc_path = path.join('src', cls.path)
                         if(inc_path == out_path) return `` // Don't include self
                         return `#include "${path.relative(out_path_dir, inc_path)}"\n`
-                    })
-                    .toArray().toSorted().join('')
+                    }).reduce((s, v) => s.add(v), new Set<string>()).values().toArray().toSorted().join('')
                 
+                + walker_hpp.refs.values()
+                    .filter(name => types.get(name)?.builtin === false)
+                    .map(name => `class ${name};\n`)
+                    .toArray().join('')
+                */
                 //+ ((walker_hpp.uses.values().some(v => builtin_class_map.has(v))) ? `using namespace godot;\n` : ``)
                 + `${body};\n`
                 + `#endif // ${name}\n`
