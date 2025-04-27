@@ -18,10 +18,57 @@ import {
     VariableNode,
     WhileNode
 } from "./def.mts"
-import { assign_op, bin_op, un_op } from "./shared.mts"
+import { assign_op, bin_op, ClassRepr, get_class_name, Namespace, NamespaceChain, un_op } from "./shared.mts"
 import { block, Walker } from "./walker.mts"
 
 export class WalkerCPP extends Walker {
+    
+    ns: Namespace
+    chain: NamespaceChain
+    constructor(ns: Namespace){
+        super()
+        this.ns = ns
+        this.chain = new NamespaceChain([ ns ])
+    }
+
+    walk_assignable = (n: AssignableNode) =>
+        `${this.walk_type(n.datatype_specifier!)} ${this.walk_identifier(n.identifier!)}`
+
+    walk_class(n: ClassNode): string {
+        let name = get_class_name(n)
+        let members = n.members.filter(m => 'type' in m)
+
+        let new_ns = this.chain.last().get(name) as ClassRepr
+        console.assert(!!new_ns)
+        this.chain.push(new_ns!)
+        let body = ``
+        body += `void ${new_ns.path}::_bind_methods() ${block(``)}\n`
+        body += members.map(m => this.walk(m)).filter(s => !!s).map(s => `${s};\n`).join('')
+        this.chain.pop()
+        
+        return body
+    }
+    walk_enum = (n: EnumNode) => ``
+    walk_variable = () => ``
+    walk_function = (n: FunctionNode) => {
+        return `${
+            this.walk_type(n.return_type!)
+        } ${
+            this.walk_identifier(n.identifier!)
+        }(${
+            n.parameters.map(p => this.walk(p)).join(', ')
+        })` + block(``)
+    }
+    walk_identifier = (n: IdentifierNode) =>
+        (['register', 'char', 'default'].includes(n.name) ? `$` : ``) + n.name
+    
+    walk_parameter = (n: ParameterNode) => `${this.walk_assignable(n)}`
+    walk_annotation = () => ``
+    walk_constant = () => ``
+    walk_signal = () => ``
+}
+
+export class WalkerCPPV1 extends Walker {
     walk_assignable = (n: AssignableNode) =>
         `${this.walk_type(n.datatype_specifier!)} ${n.identifier!.name}`
         + (n.initializer ? ` = ${this.walk(n.initializer)}` : ``)

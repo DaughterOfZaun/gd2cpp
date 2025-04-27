@@ -1,6 +1,9 @@
 # Generated
-src/
-doc_classes/
+src/*
+doc_classes/*
+
+!src/register_types.cpp
+!src/register_types.hpp
 
 # dependencies (bun install)
 node_modules

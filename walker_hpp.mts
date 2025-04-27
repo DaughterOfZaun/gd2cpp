@@ -37,14 +37,14 @@ export class WalkerHPP extends Walker {
 
     walk_assignable = (n: AssignableNode) => {
         let type = n.datatype_specifier
-        let name = n.identifier!.name
+        let name = this.walk_identifier(n.identifier!)
         if(!type && n.initializer && n.initializer.type == NodeType.LITERAL){
             let init = n.initializer as LiteralNode
             if(typeof init.value == 'number'){
                 if(init.value % 1 == 0) return `int ${name}`
                 else return `float ${name}`
             } else if(typeof init.value == 'string'){
-                return `godot::String ${name}`
+                return `String ${name}`
             } else if(typeof init.value == 'boolean'){
                 return `bool ${name}`
             }
@@ -69,30 +69,31 @@ export class WalkerHPP extends Walker {
         return `class ${name} : public ${extnds.path} ` + block(
             `GDCLASS(${name}, ${extnds.path})\n` +
 
-            `public:\n` +
-
+            `protected:\n` +
             `static void _bind_methods();\n` +
 
+            `public:\n` +
+
             members.filter(m => m.type === NodeType.CLASS).map(m => {
-                let name = (m as ClassNode).identifier!.name
+                let name = this.walk_identifier((m as ClassNode).identifier!)
                 return /*public*/ `class ${name};\n`
             }).join('') +
 
             members.filter(m => m.type === NodeType.ENUM).map(m => {
-                let name = (m as EnumNode).identifier!.name
+                let name = this.walk_identifier((m as EnumNode).identifier!)
                 return /*public*/ `enum class ${name};\n`
             }).join('') +
 
             body
         )
     }
-    walk_constant = (n: ConstantNode) => `const ${this.walk_assignable(n)}`
+    walk_constant = (n: ConstantNode) => `//const ${this.walk_assignable(n)}`
     walk_enum = (n: EnumNode) =>
-        `enum class ${n.identifier!.name} ${block(
-            n.values.map(v => `${v.identifier!.name} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
+        `enum class ${this.walk_identifier(n.identifier!)} ${block(
+            n.values.map(v => `${this.walk_identifier(v.identifier!)} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
         )}`
     walk_function = (n: FunctionNode) => {
-        let name = n.identifier!.name
+        let name = this.walk_identifier(n.identifier!)
         //let node = this.ns.get('godot')?.get('Node') as ClassRepr
         //let self = this.chain.last() as ClassRepr
         //let chain = []
@@ -101,10 +102,13 @@ export class WalkerHPP extends Walker {
         return `${this.walk_type(n.return_type!)} ${name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
         //+ ((name === '_ready' && chain.includes(node)) ? ' override' : '')
     }
-    walk_identifier = (n: IdentifierNode) => n.name
+    walk_identifier = (n: IdentifierNode) => {
+        if(['register', 'char', 'default'].includes(n.name)) return `$${n.name}`
+        return n.name
+    }
     walk_literal = (n: LiteralNode) => JSON.stringify(n.value)
     walk_parameter = (n: ParameterNode) => `${this.walk_assignable(n)}`
-    walk_signal = (n: SignalNode) => `//signal ${n.identifier!.name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
+    walk_signal = (n: SignalNode) => `//signal ${this.walk_identifier(n.identifier!)}(${n.parameters.map(p => this.walk(p)).join(', ')})`
     walk_type = (n: TypeNode | undefined): string => {
         if (!n) return 'auto'
         if (!n.type_chain.length) return 'void'
@@ -123,7 +127,7 @@ export class WalkerHPP extends Walker {
         ]
 
         let resolve = (path: string[]) => {
-            let chain = this.chain.resolve(path) || this.chain.resolve(['godot', ...path])
+            let chain = this.chain.resolve(path) //|| this.chain.resolve(['godot', ...path])
             if(!chain) {
                 console.warn(`Unresolved type path ${path.join('::')}`)
                 //TODO: throw new Error(`Unresolved type path ${path.join('::')}`)
@@ -147,7 +151,8 @@ export class WalkerHPP extends Walker {
                     return `${ref.path}<${type.path}>`
                 }
             }
-            this.refs.add(type)
+            if(type.file.startsWith('godot_cpp/')) this.uses.add(type) //HACK: 
+            else this.refs.add(type)
             return `${type.path}*`
         }
         this.uses.add(type)
@@ -156,4 +161,6 @@ export class WalkerHPP extends Walker {
     }
     walk_unary_op = (n: UnaryOpNode) => `${un_op[n.operation]}${this.walk(n.operand!)}`
     walk_variable = (n: VariableNode) => `${this.walk_assignable(n)}`
+
+    walk_annotation = () => ``
 }
