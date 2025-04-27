@@ -51,63 +51,60 @@ export class WalkerHPP extends Walker {
         }
         return `${this.walk_type(type)} ${name}`
     }
-    walk_annotation = (n: AnnotationNode) => ``
-    walk_array = (n: ArrayNode) => ``
-    walk_assert = (n: AssertNode) => ``
-    walk_assignment = (n: AssignmentNode) => ``
-    walk_await = (n: AwaitNode) => ``
     walk_binary_op = (n: BinaryOpNode) => `${this.walk(n.left_operand!)} ${bin_op[n.operation]} ${this.walk(n.right_operand!)}`
-    walk_break = (n: BreakNode) => ``
-    walk_breakpoint = (n: BreakpointNode) => ``
-    walk_call = (n: CallNode) => ``
-    walk_cast = (n: CastNode) => ``
     walk_class = (n: ClassNode) => {
         let name = get_class_name(n)
-        let extnds = get_parent_name(n)
+        //let extnds = get_parent_name(n)
+        let members = n.members.filter(m => 'type' in m)
 
-        let new_ns = this.chain.last().get(name)
+        let new_ns = this.chain.last().get(name) as ClassRepr
         console.assert(!!new_ns)
         this.chain.push(new_ns!)
-        let body = n.members.filter(m => 'type' in m).map(m => `public: ${this.walk(m)};`).join('\n')
+        let body = members.map(m => /*public*/ `${this.walk(m)};`).join('\n')
         this.chain.pop()
 
-        /*
-        if(this.types.get(extnds)?.builtin === true)
-            extnds = `godot::${extnds}`
-        this.uses.add(extnds.replace('godot::', ''))
-        */
+        let extnds = new_ns.parent!
+        this.uses.add(extnds)
 
-        return `class ${name} : public ${extnds} ` + block(
-            `GDCLASS(${name}, ${extnds})\n` +
+        return `class ${name} : public ${extnds.path} ` + block(
+            `GDCLASS(${name}, ${extnds.path})\n` +
+
+            `public:\n` +
+
+            `static void _bind_methods();\n` +
+
+            members.filter(m => m.type === NodeType.CLASS).map(m => {
+                let name = (m as ClassNode).identifier!.name
+                return /*public*/ `class ${name};\n`
+            }).join('') +
+
+            members.filter(m => m.type === NodeType.ENUM).map(m => {
+                let name = (m as EnumNode).identifier!.name
+                return /*public*/ `enum class ${name};\n`
+            }).join('') +
+
             body
         )
     }
     walk_constant = (n: ConstantNode) => `const ${this.walk_assignable(n)}`
-    walk_continue = (n: ContinueNode) => ``
-    walk_dictionary = (n: DictionaryNode) => ``
     walk_enum = (n: EnumNode) =>
         `enum class ${n.identifier!.name} ${block(
             n.values.map(v => `${v.identifier!.name} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
         )}`
-    walk_for = (n: ForNode) => ``
-    walk_function = (n: FunctionNode) => `${this.walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
-    walk_get_node = (n: GetNodeNode) => ``
+    walk_function = (n: FunctionNode) => {
+        let name = n.identifier!.name
+        //let node = this.ns.get('godot')?.get('Node') as ClassRepr
+        //let self = this.chain.last() as ClassRepr
+        //let chain = []
+        //for(let current = self; current; current = current.parent!)
+        //    chain.push(current)
+        return `${this.walk_type(n.return_type!)} ${name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
+        //+ ((name === '_ready' && chain.includes(node)) ? ' override' : '')
+    }
     walk_identifier = (n: IdentifierNode) => n.name
-    walk_if = (n: IfNode) => ``
-    walk_lambda = (n: LambdaNode) => ``
     walk_literal = (n: LiteralNode) => JSON.stringify(n.value)
-    walk_match = (n: MatchNode) => ``
-    walk_match_branch = (n: MatchBranchNode) => ``
     walk_parameter = (n: ParameterNode) => `${this.walk_assignable(n)}`
-    walk_pass = (n: PassNode) => ``
-    walk_pattern = (n: PatternNode) => ``
-    walk_preload = (n: PreloadNode) => ``
-    walk_return = (n: ReturnNode) => ``
-    walk_self = (n: SelfNode) => ``
     walk_signal = (n: SignalNode) => `//signal ${n.identifier!.name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
-    walk_subscript = (n: SubscriptNode) => ``
-    walk_suite = (n: SuiteNode) => ``
-    walk_ternary_op = (n: TernaryOpNode) => ``
     walk_type = (n: TypeNode | undefined): string => {
         if (!n) return 'auto'
         if (!n.type_chain.length) return 'void'
@@ -127,40 +124,36 @@ export class WalkerHPP extends Walker {
 
         let resolve = (path: string[]) => {
             let chain = this.chain.resolve(path) || this.chain.resolve(['godot', ...path])
-            if(!chain) throw new Error(`Unresolved type path ${path.join('::')}`)
+            if(!chain) {
+                console.warn(`Unresolved type path ${path.join('::')}`)
+                //TODO: throw new Error(`Unresolved type path ${path.join('::')}`)
+            }
             return chain
         }
 
-        let chain = resolve(path)
-        //path = chain.map(ns => ns.name).filter(name => !!name)
-        //path_str = path.join('::')
+        let type = resolve(path)
+        
+        if(!type) return path_str
 
-        let type = chain.last() as ClassRepr
         if(type.type === 'class' && !opaque_types.includes(type.name)){
             
             let ref_counted = this.ns.get(`godot`)!.get(`RefCounted`)! as ClassRepr
             let ref = this.ns.get(`godot`)!.get(`Ref`)! as ClassRepr
 
-            /*
-            for(let next: undefined | ClassRepr = type; next; next = type.follow(next.parent_name!.split('::')).at(-1) as ClassRepr){
-                if(next === ref_counted){
+            for(let current: undefined | ClassRepr = type; current; current = current!.parent){
+                if(current === ref_counted){
                     this.uses.add(ref)
                     this.uses.add(type)
-                    return `godot::Ref<${path}>`
+                    return `${ref.path}<${type.path}>`
                 }
             }
-            this.refs.add(chain)
-            */
-            return `${path}*`
+            this.refs.add(type)
+            return `${type.path}*`
         }
-        /*
-        this.uses.add(path.replace('godot::', ''))
-        */
-        return path_str
+        this.uses.add(type)
+        return type.path
             //+ (n.container_types.length ? `<${n.container_types.map(this.walk_type).join(', ')}>` : ``)
     }
-    walk_type_test = (n: TypeTestNode) => ``
     walk_unary_op = (n: UnaryOpNode) => `${un_op[n.operation]}${this.walk(n.operand!)}`
     walk_variable = (n: VariableNode) => `${this.walk_assignable(n)}`
-    walk_while = (n: WhileNode) => ``
 }

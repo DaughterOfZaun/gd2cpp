@@ -4,24 +4,24 @@ import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, UnaryOpNodeOpTy
 export type NamespaceType = 'namespace' | 'class' | 'struct' | 'enum'
 export class Namespace {
     name: string
+    path: string
     type: NamespaceType = 'namespace'
     members = new Map<string, Namespace>()
-    constructor(name: string){
+    constructor(name: string, path: string){
         this.name = name
+        this.path = path
     }
     get(name: string): undefined | Namespace {
         return this.members.get(name)
     }
     follow(path: string[]) {
-        let chain: Namespace[] = [ this ]
         let current: undefined | Namespace = this
         for(let name of path){
             current = current.get(name)
             if(!current) break
-            chain.push(current)
         }
         if(current && current instanceof ClassRepr)
-            return chain as [...Namespace[], ClassRepr]
+            return current
         //throw new Error(`Unresolved type path ${path.join('::')}`)
         return undefined
     }
@@ -36,14 +36,15 @@ export class Namespace {
 }
 
 export class ClassRepr extends Namespace {
-    path: string
-    parent_name?: string
+    file: string
     parent?: ClassRepr
-    constructor(path: string, type: NamespaceType, name: string, parent_name?: string){
-        super(name)
-        this.path = path
+    parent_path?: string
+    constructor(file: string, type: NamespaceType, name: string, path: string, parent_path?: string){
+        super(name, path)
+        this.file = file
         this.type = type
-        this.parent_name = parent_name
+        this.path = path
+        this.parent_path = parent_path
     }
 }
 
@@ -55,28 +56,32 @@ export class NamespaceChain {
     resolve(path: string[]) {
         for(let i = this.chain.length - 1; i >= 0; i--){
             let ns = this.chain[i]!
+            let path_0 = path[0]!
             
-            if(ns.members.has(path[0]!)){
-                
-                let trail = ns.follow(path)
-                if(!trail) return undefined
+            let current: undefined | Namespace = ns;
+            do {
+                if(current.name === path_0)
+                    return current.follow(path.slice(1))
+                else if(current.members.has(path_0))
+                    return current.follow(path)
 
-                return new NamespaceChain([
-                    ...this.chain.slice(0, i),
-                    ...trail
-                ])
-            }
+                if(current instanceof ClassRepr)
+                    current = current.parent
+                else break
+            } while(current)
         }
         //throw new Error(`Unresolved type path ${path.join('::')}`)
         return undefined
     }
-    push_new(path: string, ns_type: NamespaceType, name: string, extnds?: string){
+    push_new(file: string, ns_type: NamespaceType, name: string, path: string, extnds?: string){
         let ns = this.chain.at(-1)!
 
+        
         let new_ns = ns.get(name)
         //TODO: console.assert(!new_ns || ns_type === 'namespace')
         if(!new_ns){
-            new_ns = ns_type === 'namespace' ? new Namespace(name) : new ClassRepr(path, ns_type, name, extnds)
+            path = path ? path + '::' + name : name
+            new_ns = ns_type === 'namespace' ? new Namespace(name, path) : new ClassRepr(file, ns_type, name, path, extnds)
             ns.members.set(name, new_ns)
         }
 
@@ -90,6 +95,9 @@ export class NamespaceChain {
     }
     last(){
         return this.chain.at(-1)!
+    }
+    toString(){
+        return this.chain.slice(1).map(ns => ns.name).join('::')
     }
 }
 
