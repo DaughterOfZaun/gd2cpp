@@ -63,6 +63,9 @@ export class WalkerCPP extends Walker {
         (['register', 'char', 'default'].includes(n.name) ? `$` : ``) + n.name
     
     walk_parameter = (n: ParameterNode) => `${this.walk_assignable(n)}`
+
+    walk_type = (n: TypeNode) => n.type_chain.length ? n.type_chain.map(id => id.name).join('::') : 'void'
+
     walk_annotation = () => ``
     walk_constant = () => ``
     walk_signal = () => ``

@@ -141,8 +141,8 @@ export class WalkerHPP extends Walker {
 
         if(type.type === 'class' && !opaque_types.includes(type.name)){
             
-            let ref_counted = this.ns.get(`godot`)!.get(`RefCounted`)! as ClassRepr
-            let ref = this.ns.get(`godot`)!.get(`Ref`)! as ClassRepr
+            let ref_counted = this.ns/*.get(`godot`)!*/.get(`RefCounted`)! as ClassRepr
+            let ref = this.ns/*.get(`godot`)!*/.get(`Ref`)! as ClassRepr
 
             for(let current: undefined | ClassRepr = type; current; current = current!.parent){
                 if(current === ref_counted){

@@ -2,13 +2,13 @@ import fs from 'fs/promises'
 import path from 'path'
 
 import untyped_ast from "./ast.json"
-import { ClassNode, EnumNode, VariableNode } from "./def.mjs"
+import { ClassNode, EnumNode, Node, NodeType } from "./def.mjs"
 const ast: ClassNode[] = untyped_ast as any
 
 //import { WalkerCPP } from './walker_cpp.mts'
 import { WalkerHPP } from './walker_hpp.mts'
 import { ClassRepr, get_class_name, get_parent_name, Namespace, NamespaceChain, type NamespaceType } from './shared.mts'
-import { block, Walker } from './walker.mts'
+import { Walker } from './walker.mts'
 import { WalkerCPP } from './walker_cpp.mts'
 
 let types = new Namespace(``, ``)
@@ -91,10 +91,62 @@ types.walk((chain, ns) => {
     if(ns instanceof ClassRepr && ns.parent_path){
         let path = ns.parent_path.split('::')
         let parent = chain.resolve(path) //?? chain.resolve(['godot', ...path])
-        if(!parent) throw new Error(`Unresolved type path ${path.join('::')}`)
+        if(!parent){
+            //throw new Error(`Unresolved type path ${path.join('::')}`)
+            console.warn(`Unresolved type path ${path.join('::')}`)
+        }
         ns.parent = parent
     }
 })
+
+let corresp = new Map<Node, ClassRepr>()
+;(() => {
+    let chain = new NamespaceChain([types])
+    ;(function travel(obj: any, cb_enter: (obj: any) => void, cb_exit: (obj: any) => void){
+        if(Array.isArray(obj))
+            for(let v of obj)
+                travel(v, cb_enter, cb_exit)
+        else if(typeof obj === 'object')
+            for(let v of Object.values(obj))
+                travel(v, cb_enter, cb_exit)
+    })(ast,
+    (obj) => {
+        if('type' in obj)
+        switch(obj.type as NodeType){
+            case NodeType.CLASS: {
+                let n = obj as ClassNode
+                let name = get_class_name(n)
+                let ns = chain.last().get(name)!
+                corresp.set(n, ns as ClassRepr)
+                chain.push(ns)
+                break
+            }
+            case NodeType.ENUM: {
+                let n = obj as EnumNode
+                let name = n.identifier!.name
+                let ns = chain.last().get(name)!
+                corresp.set(n, ns as ClassRepr)
+                chain.push(ns)
+                break
+            }
+            case NodeType.TYPE: {
+                
+                break
+            }
+        }
+    },
+    (obj) => {
+        if('type' in obj)
+        switch(obj.type as NodeType){
+            case NodeType.CLASS:
+                chain.pop()
+                break
+            case NodeType.ENUM:
+                chain.pop()
+                break
+        }
+    })
+})//()
 
 async function Promise_waterfall<T>(promises: Promise<T>[]){
     for(let promise of promises)
