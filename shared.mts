@@ -1,5 +1,7 @@
 import path from "path"
-import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, UnaryOpNodeOpType } from "./def.mts"
+import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, EnumNode, TypeNode, UnaryOpNodeOpType } from "./def.mts"
+
+export class CorrespMapType extends Map<TypeNode|ClassNode|EnumNode, ClassRepr> {}
 
 export type NamespaceType = 'namespace' | 'class' | 'struct' | 'enum'
 export class Namespace {
@@ -39,12 +41,17 @@ export class ClassRepr extends Namespace {
     file: string
     parent?: ClassRepr
     parent_path?: string
-    constructor(file: string, type: NamespaceType, name: string, path: string, parent_path?: string){
+    is_opaque: boolean
+
+    ref_counted = false
+
+    constructor(file: string, type: NamespaceType, name: string, path: string, parent_path?: string, is_opaque?: boolean){
         super(name, path)
         this.file = file
         this.type = type
         this.path = path
         this.parent_path = parent_path
+        this.is_opaque = !!is_opaque
     }
 }
 
@@ -73,15 +80,14 @@ export class NamespaceChain {
         //throw new Error(`Unresolved type path ${path.join('::')}`)
         return undefined
     }
-    push_new(file: string, ns_type: NamespaceType, name: string, path: string, extnds?: string){
+    push_new(file: string, ns_type: NamespaceType, name: string, path: string, extnds?: string, opaque?: boolean){
         let ns = this.chain.at(-1)!
-
         
         let new_ns = ns.get(name)
         //TODO: console.assert(!new_ns || ns_type === 'namespace')
         if(!new_ns){
             path = path ? path + '::' + name : name
-            new_ns = ns_type === 'namespace' ? new Namespace(name, path) : new ClassRepr(file, ns_type, name, path, extnds)
+            new_ns = ns_type === 'namespace' ? new Namespace(name, path) : new ClassRepr(file, ns_type, name, path, extnds, opaque)
             ns.members.set(name, new_ns)
         }
 
@@ -110,48 +116,3 @@ export const get_class_name = (n: ClassNode) =>
 
 export const get_parent_name = (n: ClassNode) =>
     n.extends?.map(id => id.name).join('::') || 'RefCounted'
-
-export const assign_op = {
-    [AssignmentNodeOperation.NONE]: '',
-    [AssignmentNodeOperation.ADDITION]: '+',
-    [AssignmentNodeOperation.SUBTRACTION]: '-',
-    [AssignmentNodeOperation.MULTIPLICATION]: '*',
-    [AssignmentNodeOperation.DIVISION]: '/',
-    [AssignmentNodeOperation.MODULO]: '%',
-    [AssignmentNodeOperation.POWER]: '', //TODO:
-    [AssignmentNodeOperation.BIT_SHIFT_LEFT]: '<<',
-    [AssignmentNodeOperation.BIT_SHIFT_RIGHT]: '>>',
-    [AssignmentNodeOperation.BIT_AND]: '&',
-    [AssignmentNodeOperation.BIT_OR]: '|',
-    [AssignmentNodeOperation.BIT_XOR]: '^',
-}
-
-export const bin_op = {
-    [BinaryOpNodeOpType.ADDITION]: '+',
-    [BinaryOpNodeOpType.SUBTRACTION]: '-',
-    [BinaryOpNodeOpType.MULTIPLICATION]: '*',
-    [BinaryOpNodeOpType.DIVISION]: '/',
-    [BinaryOpNodeOpType.MODULO]: '%',
-    [BinaryOpNodeOpType.POWER]: '', //TODO:
-    [BinaryOpNodeOpType.BIT_LEFT_SHIFT]: '<<',
-    [BinaryOpNodeOpType.BIT_RIGHT_SHIFT]: '>>',
-    [BinaryOpNodeOpType.BIT_AND]: '&',
-    [BinaryOpNodeOpType.BIT_OR]: '|',
-    [BinaryOpNodeOpType.BIT_XOR]: '^',
-    [BinaryOpNodeOpType.LOGIC_AND]: '&&',
-    [BinaryOpNodeOpType.LOGIC_OR]: '||',
-    [BinaryOpNodeOpType.CONTENT_TEST]: 'in', //TODO:
-    [BinaryOpNodeOpType.COMP_EQUAL]: '==',
-    [BinaryOpNodeOpType.COMP_NOT_EQUAL]: '!=',
-    [BinaryOpNodeOpType.COMP_LESS]: '<',
-    [BinaryOpNodeOpType.COMP_LESS_EQUAL]: '<=',
-    [BinaryOpNodeOpType.COMP_GREATER]: '>',
-    [BinaryOpNodeOpType.COMP_GREATER_EQUAL]: '>=',
-}
-
-export const un_op = {
-    [UnaryOpNodeOpType.POSITIVE]: '+',
-    [UnaryOpNodeOpType.NEGATIVE]: '-',
-    [UnaryOpNodeOpType.COMPLEMENT]: '~',
-    [UnaryOpNodeOpType.LOGIC_NOT]: '!',
-}
