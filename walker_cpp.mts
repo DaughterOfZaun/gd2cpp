@@ -17,13 +17,13 @@ import {
     VariableNode,
     WhileNode
 } from "./def.mts"
-import type { ClassRepr } from "./shared.mts"
+import type { Namespace } from "./shared.mts"
 import { block, Walker } from "./walker.mts"
 import { WalkerXPP, assign_op, bin_op, un_op } from "./walker_xpp.mts"
 
 export class WalkerCPP extends WalkerXPP {
 
-    current_class?: ClassRepr
+    current_class?: Namespace
 
     walk_class(n: ClassNode): string {
         let members = n.members.filter(m => 'type' in m)
@@ -34,7 +34,7 @@ export class WalkerCPP extends WalkerXPP {
         this.current_class = cls
 
         let body = ``
-        body += `void ${cls.path}::_bind_methods() ${block(``)}\n`
+        body += `void ${cls.toString()}::_bind_methods() ${block(``)}\n`
         body += members.map(m => this.walk(m)).filter(s => !!s).map(s => `${s};\n`).join('')
 
         return body
@@ -43,7 +43,7 @@ export class WalkerCPP extends WalkerXPP {
         return `${
             this.walk_type(n.return_type!)
         } ${
-            this.current_class!.path
+            this.current_class!.toString()
         }::${
             this.walk_identifier(n.identifier!)
         }(${

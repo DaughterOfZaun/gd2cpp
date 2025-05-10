@@ -1,109 +1,103 @@
 import path from "path"
-import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, EnumNode, TypeNode, UnaryOpNodeOpType } from "./def.mts"
+import { AssignmentNodeOperation, BinaryOpNodeOpType, ClassNode, EnumNode, FunctionNode, Node, SuiteNode, TypeNode, UnaryOpNodeOpType } from "./def.mts"
 
-export class CorrespMapType extends Map<TypeNode|ClassNode|EnumNode, ClassRepr> {}
+export class CorrespMapType extends Map<Node, Namespace> {}
 
-export type NamespaceType = 'namespace' | 'class' | 'struct' | 'enum'
+export type NamespaceType = 'namespace' | 'class' | 'struct' | 'enum' | 'primitive' | 'method' | 'block'
 export class Namespace {
-    name: string
-    path: string
+    name!: string
     type: NamespaceType = 'namespace'
+
     members = new Map<string, Namespace>()
-    constructor(name: string, path: string){
-        this.name = name
-        this.path = path
-    }
+    locals = new Map<string, Namespace>()
+    
+    parent?: Namespace
+    extnds?: Namespace
+    extnds_path?: string
+
+    file?: string
+
+    is_opaque = false
+    is_ref_counted = false
+
     get(name: string): undefined | Namespace {
         return this.members.get(name)
     }
+    
     follow(path: string[]) {
         let current: undefined | Namespace = this
         for(let name of path){
             current = current.get(name)
             if(!current) break
         }
-        if(current && current instanceof ClassRepr)
-            return current
-        //throw new Error(`Unresolved type path ${path.join('::')}`)
-        return undefined
+        if(!current){
+            //throw new Error(`Unresolved type path ${path.join('::')}`)
+        }
+        return current
     }
-    walk(cb: (chain: NamespaceChain, ns: Namespace) => void, chain = new NamespaceChain([ this ])){
+    
+    walk(cb: (ns: Namespace) => void){
         for(let m of this.members.values()){
-            chain.push(m)
-            cb(chain, m)
-            m.walk(cb, chain)
-            chain.pop()
+            cb(m)
+            m.walk(cb)
         }
     }
-}
-
-export class ClassRepr extends Namespace {
-    file: string
-    parent?: ClassRepr
-    parent_path?: string
-    is_opaque: boolean
-
-    ref_counted = false
-
-    constructor(file: string, type: NamespaceType, name: string, path: string, parent_path?: string, is_opaque?: boolean){
-        super(name, path)
-        this.file = file
-        this.type = type
-        this.path = path
-        this.parent_path = parent_path
-        this.is_opaque = !!is_opaque
-    }
-}
-
-export class NamespaceChain {
-    chain: Namespace[]
-    constructor(chain: Namespace[]){
-        this.chain = chain
-    }
+    
     resolve(path: string[]) {
-        for(let i = this.chain.length - 1; i >= 0; i--){
-            let ns = this.chain[i]!
-            let path_0 = path[0]!
-            
-            let current: undefined | Namespace = ns;
-            do {
+        let path_0 = path[0]!
+        for(let ns: undefined | Namespace = this; ns; ns = ns.parent){
+            for(let current: Namespace = ns; current; current = current.extnds!){
                 if(current.name === path_0)
                     return current.follow(path.slice(1))
                 else if(current.members.has(path_0))
                     return current.follow(path)
-
-                if(current instanceof ClassRepr)
-                    current = current.parent
-                else break
-            } while(current)
+            }
         }
         //throw new Error(`Unresolved type path ${path.join('::')}`)
         return undefined
     }
-    push_new(file: string, ns_type: NamespaceType, name: string, path: string, extnds?: string, opaque?: boolean){
-        let ns = this.chain.at(-1)!
-        
-        let new_ns = ns.get(name)
-        //TODO: console.assert(!new_ns || ns_type === 'namespace')
-        if(!new_ns){
-            path = path ? path + '::' + name : name
-            new_ns = ns_type === 'namespace' ? new Namespace(name, path) : new ClassRepr(file, ns_type, name, path, extnds, opaque)
-            ns.members.set(name, new_ns)
-        }
 
-        this.chain.push(new_ns)
+    push_new(file: string, type: NamespaceType, name: string, extnds_path?: string, is_opaque?: boolean){
+        let ns = this.get(name)
+        //TODO: console.assert(!ns || (ns.type == type && type === 'namespace'))
+        if(!ns){
+            ns = new Namespace()
+            
+            ns.file = file
+            ns.type = type
+            ns.name = name
+            ns.extnds_path = extnds_path
+            ns.is_opaque = !!is_opaque
+            
+            ns.parent = this
+            this.members.set(name, ns)
+        }
+        return this.push(ns)
     }
+    
     push(new_ns: Namespace){
-        this.chain.push(new_ns)
+        console.assert(new_ns.parent == this)
+        return new_ns
     }
+    
     pop(){
-        this.chain.pop()
+        return this.parent
     }
+    
     last(){
-        return this.chain.at(-1)!
+        return this
     }
+    
+    private path?: string
     toString(){
-        return this.chain.slice(1).map(ns => ns.name).join('::')
+        if(this.path) return this.path
+        let path = ''
+        for(let ns: undefined | Namespace = this; ns; ns = ns.parent){
+            if(path) path += '::'
+            path += ns.name
+        }
+        this.path = path
+        return path
     }
 }
 

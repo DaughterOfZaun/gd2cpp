@@ -102,21 +102,21 @@ export class WalkerXPP extends Walker {
         }
 
         if(type.type === 'class' && !type.is_opaque){
-            if(type.ref_counted){
+            if(type.is_ref_counted){
                 let ref = this.ref
                 this.uses.add(ref)
                 this.uses.add(type)
                 return `${ref.path}<${type.path}>`
             } else {
-                if(type.file.startsWith('godot_cpp/'))
+                if(type.file!.startsWith('godot_cpp/'))
                     this.uses.add(type) //HACK: 
                 else
                     this.refs.add(type)
-                return `${type.path}*`
+                return `${type.toString()}*`
             }
         } else {
             this.uses.add(type)
-            return type.path
+            return type.toString()
                 //+ (n.container_types.length ? `<${n.container_types.map(this.walk_type).join(', ')}>` : ``)
         }
     }
