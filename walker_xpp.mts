@@ -44,18 +44,18 @@ import {
     VariableNode,
     WhileNode
 } from "./def.mts"
-import type { ClassRepr, CorrespMapType } from "./shared.mts"
+import type { Namespace, CorrespMapType, NamespaceType } from "./shared.mts"
 import { block, Walker } from "./walker.mts"
 
 export class WalkerXPP extends Walker {
 
     corresp: CorrespMapType
-    ref: ClassRepr
+    ref: Namespace
     
-    uses = new Set<ClassRepr>()
-    refs = new Set<ClassRepr>()
+    uses = new Set<Namespace>()
+    refs = new Set<Namespace>()
     
-    constructor(corresp: CorrespMapType, { ref }: { [key: string]: ClassRepr }){
+    constructor(corresp: CorrespMapType, { ref }: { [key: string]: Namespace }){
         super()
         this.corresp = corresp
         this.ref = ref!
@@ -64,7 +64,7 @@ export class WalkerXPP extends Walker {
     gen_uses(out_path: string, out_path_dir: string){
         return ``
         + this.uses.values()
-            .filter(cls => cls.file.startsWith('godot_cpp/'))
+            .filter(cls => cls.file && cls.file.startsWith('godot_cpp/'))
             .map(cls => {
                 return `#include <${cls.file}>\n`
             })
@@ -72,9 +72,9 @@ export class WalkerXPP extends Walker {
             .toArray().toSorted().join('')
         
         + this.uses.values()
-            .filter(cls => !cls.file.startsWith('godot_cpp/'))
+            .filter(cls => cls.file && !cls.file.startsWith('godot_cpp/'))
             .map(cls => {
-                let inc_path = path.join('src', cls.file)
+                let inc_path = path.join('src', cls.file!)
                 if(inc_path == out_path) return `` // Don't include self
                 return `#include "${path.relative(out_path_dir, inc_path)}"\n`
             })
@@ -89,9 +89,14 @@ export class WalkerXPP extends Walker {
             .toArray().join('')
     }
 
-    walk_identifier(n: IdentifierNode): string {
+    walk_identifier_not_expr(n: IdentifierNode): string {
         return (['register', 'char', 'default'].includes(n.name) ? `$` : ``) + n.name
     }
+
+    walk_identifier(n: IdentifierNode): string {
+        return this.walk_identifier_not_expr(n)
+    }
+
     walk_type(n: TypeNode | undefined): string {
         if (!n) return 'auto'
         if (!n.type_chain.length) return 'void'
@@ -112,24 +117,24 @@ export class WalkerXPP extends Walker {
                     this.uses.add(type) //HACK: 
                 else
                     this.refs.add(type)
-                return `${type.toString()}*`
+                return `${type.path}*`
             }
         } else {
             this.uses.add(type)
-            return type.toString()
+            return type.path
                 //+ (n.container_types.length ? `<${n.container_types.map(this.walk_type).join(', ')}>` : ``)
         }
     }
 
     walk_assignable(n: AssignableNode){
-        return `${this.walk_type(n.datatype_specifier!)} ${n.identifier!.name}`
+        return `${this.walk_type(n.datatype_specifier!)} ${this.walk_identifier_not_expr(n.identifier!)}`
             + (n.initializer ? ` = ${this.walk(n.initializer)}` : ``)
     }
     walk_annotation(n: AnnotationNode){
-        return  `//${n.name}(${n.arguments.map(a => this.walk(a))})`
+        return `//${n.name}(${n.arguments.map(a => this.walk(a))})`
     }
     walk_array(n: ArrayNode){
-        return  `{${n.elements.map(e => this.walk(e)).join(', ')}}`
+        return `Array::make(${n.elements.map(e => this.walk(e)).join(', ')})`
     }
     walk_assert(n: AssertNode){
         return `assert(${this.walk(n.condition!)}`
@@ -137,25 +142,27 @@ export class WalkerXPP extends Walker {
             + `)`
     }
     walk_assignment(n: AssignmentNode){
-        return  `${this.walk(n.assignee!)} ${assign_op[n.operation]}= ${this.walk(n.assigned_value!)}` //TODO: variant_op?
+        return `${this.walk(n.assignee!)} ${assign_op[n.operation]}= ${this.walk(n.assigned_value!)}` //TODO: variant_op?
     }
     walk_await(n: AwaitNode){
-        return  `co_await ${this.walk(n.to_await!)}`
+        return `co_await ${this.walk(n.to_await!)}`
     }
     walk_binary_op(n: BinaryOpNode){
-        return  `${this.walk(n.left_operand!)} ${bin_op[n.operation]} ${this.walk(n.right_operand!)}` //TODO: variant_op?
+        if(n.operation == BinaryOpNodeOpType.CONTENT_TEST)
+            return `${this.walk(n.right_operand!)}.has(${this.walk(n.left_operand!)})`
+        return `${this.walk(n.left_operand!)} ${bin_op[n.operation]} ${this.walk(n.right_operand!)}` //TODO: variant_op?
     }
     walk_break(n: BreakNode){
-        return  `break`
+        return `break`
     }
     walk_breakpoint(n: BreakpointNode){
-        return  `breakpoint()`
+        return `breakpoint()`
     }
     walk_call(n: CallNode){
-        return  `${this.walk(n.callee!)}(${n.arguments.map(arg => this.walk(arg)).join(', ')})` //TODO: function_name? is_super? is_static?
+        return `${this.walk(n.callee!)}(${n.arguments.map(arg => this.walk(arg)).join(', ')})` //TODO: function_name? is_super? is_static?
     }
     walk_cast(n: CastNode){
-        return  `(${this.walk_type(n.cast_type!)})${this.walk(n.operand!)}`
+        return `(${this.walk_type(n.cast_type!)})${this.walk(n.operand!)}`
     }
     walk_class(n: ClassNode){
         return `class ${n.fqcn} ${block(
@@ -163,31 +170,31 @@ export class WalkerXPP extends Walker {
         )}`
     }
     walk_constant(n: ConstantNode){
-        return  `const ${this.walk_assignable(n)}`
+        return `const ${this.walk_assignable(n)}`
     }
     walk_continue(n: ContinueNode){
-        return  `continue`
+        return `continue`
     }
     walk_dictionary(n: DictionaryNode){
-        return  `{${
+        return `{${
             n.elements.map(e => `{${this.walk(e.key!)}, ${this.walk(e.value!)}}`).join(', ')
         }}`
     }
     walk_enum(n: EnumNode){
-        return `enum ${n.identifier!.name} ${block(
-            n.values.map(v => `${v.identifier!.name} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
+        return `enum ${this.walk_identifier_not_expr(n.identifier!)} ${block(
+            n.values.map(v => `${this.walk_identifier_not_expr(v.identifier!)} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
         )}`
     }
     walk_for(n: ForNode){
-        return `for(${this.walk_type(n.datatype_specifier!)} ${n.variable!.name} : ${this.walk(n.list!)}) ${block(
+        return `for(${this.walk_type(n.datatype_specifier!)} ${this.walk_identifier_not_expr(n.variable!)} : ${this.walk(n.list!)}) ${block(
             this.walk(n.loop!)
         )}`
     }
     walk_function(n: FunctionNode){
-        return  `${this.walk_type(n.return_type!)} ${n.identifier!.name}(${n.parameters.map(p => this.walk(p)).join(', ')}) ${block(this.walk(n.body!))}`
+        return `${this.walk_type(n.return_type!)} ${this.walk_identifier_not_expr(n.identifier!)}(${n.parameters.map(p => this.walk(p)).join(', ')}) ${block(this.walk(n.body!))}`
     }
     walk_get_node(n: GetNodeNode){
-        return  `get_node("${n.full_path}")` //TODO: use_dollar?
+        return `get_node("${n.full_path}")` //TODO: use_dollar?
     }
     walk_if(n: IfNode){
         return `if(${this.walk(n.condition!)}) ${block(
@@ -220,40 +227,58 @@ export class WalkerXPP extends Walker {
         return  this.walk_assignable(n)
     }
     walk_pass(n: PassNode){
-        return  ``
+        return ``
     }
     walk_pattern(n: PatternNode){
-        return  `PATTERN` //TODO:
+        return `PATTERN` //TODO:
     }
     walk_preload(n: PreloadNode){
-        return  `preload(${this.walk(n.path!)})` //TODO: resolved_path?
+        return `preload(${this.walk(n.path!)})` //TODO: resolved_path?
     }
     walk_return(n: ReturnNode){
-        return  `return` + (n.void_return ? ` ${this.walk(n.return_value!)}` : ``)
+        return `return` + (n.return_value ? ` ${this.walk(n.return_value!)}` : ``)
     }
     walk_self(n: SelfNode){
-        return  `this`
+        return `this`
     }
     walk_signal(n: SignalNode){
-        return  `//signal ${n.identifier!.name}(${n.parameters.map(p => this.walk(p)).join(', ')})` //TODO:
+        return `//signal ${this.walk_identifier_not_expr(n.identifier!)}(${n.parameters.map(p => this.walk(p)).join(', ')})` //TODO:
     }
     walk_subscript(n: SubscriptNode){
-        return  `${this.walk(n.base!)}${n.is_attribute ? `.${n.attribute!.name}` : `[${this.walk(n.index!)}]`}`
+        
+        let base_ns = this.corresp.get(n.base!)!
+        this.uses.add(base_ns)
+        
+        let base_str = this.walk(n.base!)
+
+        if(n.is_attribute){
+            
+            let delim = '.'
+            let ns_types: NamespaceType[] = ['class', 'struct', 'enum', 'namespace']
+            let is_ns = ns_types.includes(base_ns.get(n.attribute!.name)?.type!)
+            if(is_ns || base_ns.type == 'enum') delim = '::'
+            else if(base_ns.is_opaque) delim = '.'
+            else if(base_ns.type == 'class') delim = '->'
+            
+            return `${base_str}${delim}${this.walk_identifier_not_expr(n.attribute!)}`
+        } else {
+            return `${base_str}[${this.walk(n.index!)}]`
+        }
     }
     walk_suite(n: SuiteNode){
         return  n.statements.map(s => `${this.walk(s!)};`).join('\n') //TODO:
     }
     walk_ternary_op(n: TernaryOpNode){
-        return  `(${this.walk(n.condition!)}) ? (${this.walk(n.true_expr!)}) : (${this.walk(n.false_expr!)})`
+        return `(${this.walk(n.condition!)}) ? (${this.walk(n.true_expr!)}) : (${this.walk(n.false_expr!)})`
     }
     walk_type_test(n: TypeTestNode){
-        return  `TYPE_TEST` //TODO:
+        return `TYPE_TEST` //TODO:
     }
     walk_unary_op(n: UnaryOpNode){
-        return  `${un_op[n.operation]}${this.walk(n.operand!)}` //TODO: variant_op?
+        return `${un_op[n.operation]}${this.walk(n.operand!)}` //TODO: variant_op?
     }
     walk_variable(n: VariableNode){
-        return  `${this.walk_assignable(n)}`
+        return this.walk_assignable(n)
     }
     walk_while(n: WhileNode){
         return `while(${this.walk(n.condition!)}) ${block(

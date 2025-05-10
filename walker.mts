@@ -25,8 +25,8 @@ export function block(code: string): string {
     return `{\n` + code.split('\n').map(line => TAB + line).join('\n') + `\n}`
 }
 
-export abstract class Walker {
-    walk(node: Node): string {
+export abstract class Walker<T = string> {
+    walk(node: Node): T {
         switch (node.type) {
             case NodeType.NONE: throw new Error()
             case NodeType.ANNOTATION: return this.walk_annotation(node as AnnotationNode)
@@ -70,43 +70,43 @@ export abstract class Walker {
             case NodeType.WHILE: return this.walk_while(node as WhileNode)
         }
     }
-    walk_annotation(n: AnnotationNode): string { throw new Error("Method not implemented.") }
-    walk_array(n: ArrayNode): string { throw new Error("Method not implemented.") }
-    walk_assert(n: AssertNode): string { throw new Error("Method not implemented.") }
-    walk_assignment(n: AssignmentNode): string { throw new Error("Method not implemented.") }
-    walk_await(n: AwaitNode): string { throw new Error("Method not implemented.") }
-    walk_binary_op(n: BinaryOpNode): string { throw new Error("Method not implemented.") }
-    walk_break(n: BreakNode): string { throw new Error("Method not implemented.") }
-    walk_breakpoint(n: BreakpointNode): string { throw new Error("Method not implemented.") }
-    walk_call(n: CallNode): string { throw new Error("Method not implemented.") }
-    walk_cast(n: CastNode): string { throw new Error("Method not implemented.") }
-    walk_class(n: ClassNode): string { throw new Error("Method not implemented.") }
-    walk_constant(n: ConstantNode): string { throw new Error("Method not implemented.") }
-    walk_continue(n: ContinueNode): string { throw new Error("Method not implemented.") }
-    walk_dictionary(n: DictionaryNode): string { throw new Error("Method not implemented.") }
-    walk_enum(n: EnumNode): string { throw new Error("Method not implemented.") }
-    walk_for(n: ForNode): string { throw new Error("Method not implemented.") }
-    walk_function(n: FunctionNode): string { throw new Error("Method not implemented.") }
-    walk_get_node(n: GetNodeNode): string { throw new Error("Method not implemented.") }
-    walk_identifier(n: IdentifierNode): string { throw new Error("Method not implemented.") }
-    walk_if(n: IfNode): string { throw new Error("Method not implemented.") }
-    walk_lambda(n: LambdaNode): string { throw new Error("Method not implemented.") }
-    walk_literal(n: LiteralNode): string { throw new Error("Method not implemented.") }
-    walk_match(n: MatchNode): string { throw new Error("Method not implemented.") }
-    walk_match_branch(n: MatchBranchNode): string { throw new Error("Method not implemented.") }
-    walk_parameter(n: ParameterNode): string { throw new Error("Method not implemented.") }
-    walk_pass(n: PassNode): string { throw new Error("Method not implemented.") }
-    walk_pattern(n: PatternNode): string { throw new Error("Method not implemented.") }
-    walk_preload(n: PreloadNode): string { throw new Error("Method not implemented.") }
-    walk_return(n: ReturnNode): string { throw new Error("Method not implemented.") }
-    walk_self(n: SelfNode): string { throw new Error("Method not implemented.") }
-    walk_signal(n: SignalNode): string { throw new Error("Method not implemented.") }
-    walk_subscript(n: SubscriptNode): string { throw new Error("Method not implemented.") }
-    walk_suite(n: SuiteNode): string { throw new Error("Method not implemented.") }
-    walk_ternary_op(n: TernaryOpNode): string { throw new Error("Method not implemented.") }
-    walk_type(n: TypeNode): string { throw new Error("Method not implemented.") }
-    walk_type_test(n: TypeTestNode): string { throw new Error("Method not implemented.") }
-    walk_unary_op(n: UnaryOpNode): string { throw new Error("Method not implemented.") }
-    walk_variable(n: VariableNode): string { throw new Error("Method not implemented.") }
-    walk_while(n: WhileNode): string { throw new Error("Method not implemented.") }
+    walk_annotation(n: AnnotationNode): T { throw new Error("Method not implemented.") }
+    walk_array(n: ArrayNode): T { throw new Error("Method not implemented.") }
+    walk_assert(n: AssertNode): T { throw new Error("Method not implemented.") }
+    walk_assignment(n: AssignmentNode): T { throw new Error("Method not implemented.") }
+    walk_await(n: AwaitNode): T { throw new Error("Method not implemented.") }
+    walk_binary_op(n: BinaryOpNode): T { throw new Error("Method not implemented.") }
+    walk_break(n: BreakNode): T { throw new Error("Method not implemented.") }
+    walk_breakpoint(n: BreakpointNode): T { throw new Error("Method not implemented.") }
+    walk_call(n: CallNode): T { throw new Error("Method not implemented.") }
+    walk_cast(n: CastNode): T { throw new Error("Method not implemented.") }
+    walk_class(n: ClassNode): T { throw new Error("Method not implemented.") }
+    walk_constant(n: ConstantNode): T { throw new Error("Method not implemented.") }
+    walk_continue(n: ContinueNode): T { throw new Error("Method not implemented.") }
+    walk_dictionary(n: DictionaryNode): T { throw new Error("Method not implemented.") }
+    walk_enum(n: EnumNode): T { throw new Error("Method not implemented.") }
+    walk_for(n: ForNode): T { throw new Error("Method not implemented.") }
+    walk_function(n: FunctionNode): T { throw new Error("Method not implemented.") }
+    walk_get_node(n: GetNodeNode): T { throw new Error("Method not implemented.") }
+    walk_identifier(n: IdentifierNode): T { throw new Error("Method not implemented.") }
+    walk_if(n: IfNode): T { throw new Error("Method not implemented.") }
+    walk_lambda(n: LambdaNode): T { throw new Error("Method not implemented.") }
+    walk_literal(n: LiteralNode): T { throw new Error("Method not implemented.") }
+    walk_match(n: MatchNode): T { throw new Error("Method not implemented.") }
+    walk_match_branch(n: MatchBranchNode): T { throw new Error("Method not implemented.") }
+    walk_parameter(n: ParameterNode): T { throw new Error("Method not implemented.") }
+    walk_pass(n: PassNode): T { throw new Error("Method not implemented.") }
+    walk_pattern(n: PatternNode): T { throw new Error("Method not implemented.") }
+    walk_preload(n: PreloadNode): T { throw new Error("Method not implemented.") }
+    walk_return(n: ReturnNode): T { throw new Error("Method not implemented.") }
+    walk_self(n: SelfNode): T { throw new Error("Method not implemented.") }
+    walk_signal(n: SignalNode): T { throw new Error("Method not implemented.") }
+    walk_subscript(n: SubscriptNode): T { throw new Error("Method not implemented.") }
+    walk_suite(n: SuiteNode): T { throw new Error("Method not implemented.") }
+    walk_ternary_op(n: TernaryOpNode): T { throw new Error("Method not implemented.") }
+    walk_type(n: TypeNode): T { throw new Error("Method not implemented.") }
+    walk_type_test(n: TypeTestNode): T { throw new Error("Method not implemented.") }
+    walk_unary_op(n: UnaryOpNode): T { throw new Error("Method not implemented.") }
+    walk_variable(n: VariableNode): T { throw new Error("Method not implemented.") }
+    walk_while(n: WhileNode): T { throw new Error("Method not implemented.") }
 }

@@ -1,14 +1,11 @@
 import {
-    AssignableNode, 
-    BinaryOpNode, 
-    ClassNode, ConstantNode, 
+    AssignableNode,
+    ClassNode, ConstantNode,
     EnumNode,
     FunctionNode,
-    LiteralNode,
     NodeType,
-    ParameterNode, 
+    ParameterNode,
     SignalNode,
-    UnaryOpNode,
     VariableNode,
 } from "./def.mts"
 import { block } from "./walker.mts";
@@ -20,7 +17,7 @@ export class WalkerHPP extends WalkerXPP {
     walk_variable = (n: VariableNode) => `${this.walk_assignable(n)}`
     walk_assignable = (n: AssignableNode) => {
         let type = n.datatype_specifier
-        let name = this.walk_identifier(n.identifier!)
+        let name = this.walk_identifier_not_expr(n.identifier!)
         /*
         if(!type && n.initializer && n.initializer.type == NodeType.LITERAL){
             let init = n.initializer as LiteralNode
@@ -40,7 +37,7 @@ export class WalkerHPP extends WalkerXPP {
         let members = n.members.filter(m => 'type' in m)
 
         let cls = this.corresp.get(n)!
-        let extnds = cls.parent!
+        let extnds = cls.extnds!
         this.uses.add(extnds)
 
         return `class ${cls.name} : public ${extnds.path} ` + block(
@@ -52,12 +49,12 @@ export class WalkerHPP extends WalkerXPP {
             `public:\n` +
 
             members.filter(m => m.type === NodeType.CLASS).map(m => {
-                let name = this.walk_identifier((m as ClassNode).identifier!)
+                let name = this.walk_identifier_not_expr((m as ClassNode).identifier!)
                 return /*public*/ `class ${name};\n`
             }).join('') +
 
             members.filter(m => m.type === NodeType.ENUM).map(m => {
-                let name = this.walk_identifier((m as EnumNode).identifier!)
+                let name = this.walk_identifier_not_expr((m as EnumNode).identifier!)
                 return /*public*/ `enum class ${name};\n`
             }).join('') +
 
@@ -65,11 +62,11 @@ export class WalkerHPP extends WalkerXPP {
         )
     }
     walk_enum = (n: EnumNode) =>
-        `enum class ${this.walk_identifier(n.identifier!)} ${block(
-            n.values.map(v => `${this.walk_identifier(v.identifier!)} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
+        `enum class ${this.walk_identifier_not_expr(n.identifier!)} ${block(
+            n.values.map(v => `${this.walk_identifier_not_expr(v.identifier!)} = ${v.custom_value ? this.walk(v.custom_value) : v.value}`).join(',\n')
         )}`
     walk_function = (n: FunctionNode) => {
-        let name = this.walk_identifier(n.identifier!)
+        let name = this.walk_identifier_not_expr(n.identifier!)
         //let node = this.ns.get('godot')?.get('Node') as ClassRepr
         //let self = this.chain.last() as ClassRepr
         //let chain = []
@@ -78,7 +75,7 @@ export class WalkerHPP extends WalkerXPP {
         return `${this.walk_type(n.return_type!)} ${name}(${n.parameters.map(p => this.walk(p)).join(', ')})`
         //+ ((name === '_ready' && chain.includes(node)) ? ' override' : '')
     }
-    walk_signal = (n: SignalNode) => `//signal ${this.walk_identifier(n.identifier!)}(${n.parameters.map(p => this.walk(p)).join(', ')})`
+    walk_signal = (n: SignalNode) => `//signal ${this.walk_identifier_not_expr(n.identifier!)}(${n.parameters.map(p => this.walk(p)).join(', ')})`
     
     walk_annotation = () => ``
 }

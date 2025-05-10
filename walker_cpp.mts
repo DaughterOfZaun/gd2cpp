@@ -1,29 +1,17 @@
 import {
-    AnnotationNode, ArrayNode, AssertNode, AssignableNode, AssignmentNode, AwaitNode,
-    BinaryOpNode, BreakNode, BreakpointNode,
-    CallNode, CastNode, ClassNode, ConstantNode, ContinueNode,
-    DictionaryNode,
-    EnumNode,
-    ForNode, FunctionNode,
-    GetNodeNode,
-    IdentifierNode, IfNode,
-    LambdaNode, LiteralNode,
-    MatchBranchNode, MatchNode,
-    ParameterNode, PassNode, PatternNode, PreloadNode,
-    ReturnNode,
-    SelfNode, SignalNode, SubscriptNode, SuiteNode,
-    TernaryOpNode, TypeNode, TypeTestNode,
-    UnaryOpNode,
-    VariableNode,
-    WhileNode
+    ClassNode,
+    ConstantNode,
+    FunctionNode,
+    VariableNode
 } from "./def.mts"
 import type { Namespace } from "./shared.mts"
-import { block, Walker } from "./walker.mts"
-import { WalkerXPP, assign_op, bin_op, un_op } from "./walker_xpp.mts"
+import { block } from "./walker.mts"
+import { WalkerXPP } from "./walker_xpp.mts"
 
 export class WalkerCPP extends WalkerXPP {
 
     current_class?: Namespace
+    level = 0
 
     walk_class(n: ClassNode): string {
         let members = n.members.filter(m => 'type' in m)
@@ -34,26 +22,31 @@ export class WalkerCPP extends WalkerXPP {
         this.current_class = cls
 
         let body = ``
-        body += `void ${cls.toString()}::_bind_methods() ${block(``)}\n`
+        body += `void ${cls.path}::_bind_methods() ${block(``)}\n`
         body += members.map(m => this.walk(m)).filter(s => !!s).map(s => `${s};\n`).join('')
 
         return body
     }
     walk_function = (n: FunctionNode) => {
-        return `${
+        this.level++
+        
+        let ret = `${
             this.walk_type(n.return_type!)
         } ${
-            this.current_class!.toString()
+            this.current_class!.path
         }::${
-            this.walk_identifier(n.identifier!)
+            this.walk_identifier_not_expr(n.identifier!)
         }(${
             n.parameters.map(p => this.walk(p)).join(', ')
         })` + block(this.walk(n.body!))
+        
+        this.level--
+        return ret
     }
     
     walk_enum = () => ``
-    walk_variable = () => ``
+    walk_variable = (n: VariableNode) => this.level ? super.walk_variable(n) : ``
     walk_annotation = () => ``
-    walk_constant = () => ``
+    walk_constant = (n: ConstantNode) => this.level ? super.walk_constant(n) : ``
     walk_signal = () => ``
 }

@@ -14,6 +14,7 @@ export class Namespace {
     parent?: Namespace
     extnds?: Namespace
     extnds_path?: string
+    returns?: Namespace
 
     file?: string
 
@@ -21,21 +22,9 @@ export class Namespace {
     is_ref_counted = false
 
     get(name: string): undefined | Namespace {
-        return this.members.get(name)
+        return this.locals.get(name) ?? this.members.get(name)
     }
-    
-    follow(path: string[]) {
-        let current: undefined | Namespace = this
-        for(let name of path){
-            current = current.get(name)
-            if(!current) break
-        }
-        if(!current){
-            //throw new Error(`Unresolved type path ${path.join('::')}`)
-        }
-        return current
-    }
-    
+
     walk(cb: (ns: Namespace) => void){
         for(let m of this.members.values()){
             cb(m)
@@ -43,24 +32,41 @@ export class Namespace {
         }
     }
     
-    resolve(path: string[]) {
-        let path_0 = path[0]!
-        for(let ns: undefined | Namespace = this; ns; ns = ns.parent){
-            for(let current: Namespace = ns; current; current = current.extnds!){
-                if(current.name === path_0)
-                    return current.follow(path.slice(1))
-                else if(current.members.has(path_0))
-                    return current.follow(path)
+    resolve(path: string[], debug = false) {
+        let path_0 = path.shift()!
+        let current: undefined | Namespace;
+        outer_loop: for(let ns: undefined | Namespace = this; ns; ns = ns.parent!){
+            inner_loop: for(current = ns; current; current = current.extnds!){
+                if(current.name === path_0){
+                    break outer_loop
+                } else {
+                    let tmp = current.get(path_0)
+                    if(tmp){
+                        current = tmp
+                        break outer_loop
+                    }
+                }
             }
         }
-        //throw new Error(`Unresolved type path ${path.join('::')}`)
-        return undefined
+        if(current){
+            for(let name of path){
+                current = current.get(name)
+                if(!current) break
+            }
+        }
+        if(!current && !debug){
+            path.unshift(path_0)
+            //throw new Error(`Unresolved type path ${path.join('::')}`)
+            console.log(`Unresolved type path ${this.path}...${path.join('::')}`)
+            //this.resolve(path, true)
+        }
+        return current
     }
 
     push_new(file: string, type: NamespaceType, name: string, extnds_path?: string, is_opaque?: boolean){
         let ns = this.get(name)
         //TODO: console.assert(!ns || (ns.type == type && type === 'namespace'))
-        if(!ns){
+        if(!ns || ns.name === 'auto'){ //HACK:
             ns = new Namespace()
             
             ns.file = file
@@ -88,15 +94,19 @@ export class Namespace {
         return this
     }
     
-    private path?: string
-    toString(){
-        if(this.path) return this.path
-        let path = ''
-        for(let ns: undefined | Namespace = this; ns; ns = ns.parent){
-            if(path) path += '::'
-            path += ns.name
+    private _path?: string
+    public get path(): string {
+        if(this._path) return this._path
+        
+        let parents: string[] = []
+        for(let ns: undefined | Namespace = this; ns && ns.parent; ns = ns.parent){
+            parents.unshift(ns.name)
         }
-        this.path = path
+        if(parents[0] == 'godot')
+            parents.shift()
+        let path = parents.join('::')
+
+        this._path = path
         return path
     }
 }
